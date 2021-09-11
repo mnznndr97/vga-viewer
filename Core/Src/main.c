@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include <crc7.h>
+#include <vga/edid.h>
 
 /* USER CODE END Includes */
 
