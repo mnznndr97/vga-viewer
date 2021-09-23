@@ -5,9 +5,13 @@
  *      Author: mnznn
  */
 
+#include <stdint.h>
+#include <stdbool.h>
+
 #ifndef INC_TYPEDEFS_H_
 #define INC_TYPEDEFS_H_
 
+typedef bool BOOL;
 typedef int8_t SBYTE;
 typedef int16_t Int16;
 typedef int32_t Int32;
