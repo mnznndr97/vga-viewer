@@ -31,6 +31,8 @@ typedef enum _EDIDTiming {
 	EDIDTiming640x480At75Hz = 2,
 	EDIDTiming800x600At56Hz = 1,
 	EDIDTiming800x600At60Hz = 0,
+
+	EDIDTiming1024x728At60Hz = 11,
 } EDIDTiming;
 
 typedef struct _EDIDDigitalInput {
@@ -174,37 +176,19 @@ inline float EDIDGetGamma(const EDID *edid) {
 	return 1.0f + (edid->BasicDisplayParameters.DisplayGamma / 100.0f);
 }
 
-inline bool EDIDIsChecksumValid(const EDID *edid) {
-	// https://en.wikipedia.org/wiki/Extended_Display_Identification_Data#Structure,_version_1.4
-	// Sum of all 128 bytes should equal 0 (mod 256)
-
-	const BYTE *bytePtr = (const BYTE*) edid;
-	// Max sum should be 255 * 128 = 32.640, so a UInt16 should be enough
-	UInt16 sum = 0;
-
-	for (size_t i = 0; i < sizeof(EDID); i++) {
-		sum += bytePtr[i];
-	}
-
-	return (sum % 256) == 0;
-}
-
-BOOL EDIDIsTimingSupported(const EDID *edid, EDIDTiming timing);
+inline BOOL EDIDIsChecksumValid(const EDID *edid);
+inline BOOL EDIDIsTimingSupported(const EDID *edid, EDIDTiming timing);
 
 inline BOOL EDIDIsTimingInfoFilled(const EDIDTimingInformation *edidTimingInfo) {
 	BYTE *bytePtr = (BYTE*) edidTimingInfo;
 	return bytePtr[0] != 0x01 && bytePtr[1] != 0x01;
 }
 
-inline static Int32 EDIDDTDMergeBits(BYTE lsb, BYTE msb) {
-	return lsb | (msb << 8);
-}
+inline Int32 EDIDDTDMergeBits(BYTE lsb, BYTE msb);
 
 void EDIDGetManufacturer(const EDID *edid, char *buffer);
 
-inline Int32 EDIDDTDGetHorizontalActivePixels(const EDIDDetailedTimingDescriptor *detInfo) {
-	return EDIDDTDMergeBits(detInfo->HActivePixelsLSBs, detInfo->HActivePixelsMSBs);
-}
+inline Int32 EDIDDTDGetHorizontalActivePixels(const EDIDDetailedTimingDescriptor *detInfo);
 
 inline Int32 EDIDDTDGetHorizontalBlankingPixels(const EDIDDetailedTimingDescriptor *detInfo) {
 	return EDIDDTDMergeBits(detInfo->HBlanckingPixelsLSBs, detInfo->HBlanckingPixelsMSBs);
