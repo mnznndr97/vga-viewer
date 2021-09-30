@@ -96,6 +96,21 @@ void EDIDDumpStructure(const EDID *edid) {
 			printf("\t\tSeparate sync \033[1;32msupported\033[0m\r\n");
 		else
 			printf("\t\tSeparate sync \033[1;31mNOT supported\033[0m\r\n");
+
+		if (edid->BasicDisplayParameters.AnalogInput.CompositeSyncSupported)
+			printf("\t\tComposite sync (on HSync) \033[1;32msupported\033[0m\r\n");
+		else
+			printf("\t\tComposite sync (on HSync) \033[1;31mNOT supported\033[0m\r\n");
+
+		if (edid->BasicDisplayParameters.AnalogInput.SyncOnGreenSupported)
+			printf("\t\tSync on green \033[1;32msupported\033[0m\r\n");
+		else
+			printf("\t\tSync on green \033[1;31mNOT supported\033[0m\r\n");
+
+		if (!edid->BasicDisplayParameters.AnalogInput.SerratedVsyncPulse)
+			printf("\t\tSerrated VSync pulse (on Composite or SOG) \033[1;32mNOT necessary\033[0m\r\n");
+		else
+			printf("\t\tSerrated VSync pulse (on Composite or SOG) \033[1;31mnecessary\033[0m\r\n");
 	}
 
 	printf("\tBasic timings\r\n");
