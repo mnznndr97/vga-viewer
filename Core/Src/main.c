@@ -53,11 +53,13 @@ I2C_HandleTypeDef hi2c2;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim4;
+DMA_HandleTypeDef hdma_tim1_up;
+DMA_HandleTypeDef hdma_tim2_up_ch3;
 
 UART_HandleTypeDef huart4;
 
 /* USER CODE BEGIN PV */
+Int16 VideoBuffer[1056];
 
 /* USER CODE END PV */
 
@@ -70,7 +72,7 @@ static void MX_I2C2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_TIM4_Init(void);
+static void MX_DMA_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -90,7 +92,7 @@ int __io_putchar(int ch) {
 	return 0;
 }
 
-float FormatSec(float time) {
+void FormatSec(float time) {
 	static const char *suffix[] = { "sec", "ms", "us", "ns" };
 	const int suffixLength = 3; // We should never get to ns
 
@@ -101,6 +103,15 @@ float FormatSec(float time) {
 
 	printf("%.2f %s", time, suffix[i]);
 }
+
+void OnDMAError(DMA_HandleTypeDef *dma) {
+	printf("Error\r\n");
+}
+
+void OnDMACplt(DMA_HandleTypeDef *dma) {
+	printf("Cplt\r\n");
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -114,6 +125,15 @@ int main(void) {
 
 	// We initialize our SD - CRC7 library
 	//Crc7Initialize();
+
+	// for (int line = 23; line < 623; line++) {
+	for (int pixel = 0; pixel < 1056; pixel++) {
+		if (pixel >= 88 && pixel < 888)
+			VideoBuffer[pixel] = 0;
+		else
+			VideoBuffer[pixel] = 0;
+	}
+	// }
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -140,7 +160,7 @@ int main(void) {
 	MX_TIM3_Init();
 	MX_TIM2_Init();
 	MX_TIM1_Init();
-	MX_TIM4_Init();
+	MX_DMA_Init();
 	/* USER CODE BEGIN 2 */
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 
@@ -167,21 +187,36 @@ int main(void) {
 		EDIDDumpStructure(pEdid);
 		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
 
-		htim3.Instance->CNT = 89;
-		htim2.Instance->CNT = 24;
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);
+		GPIOC->BSRR = GPIO_PIN_11;
 
-		HAL_StatusTypeDef vSyncTimStatusOd = HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_3);
-		HAL_StatusTypeDef vSyncTimStatus = HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_2);
-		HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_2);
-		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_1);
-		HAL_TIM_OC_Start_IT(&htim3, TIM_CHANNEL_4);
-		uint32_t value = htim3.Instance->CNT;
+		HAL_Delay(1000);
 
-		if (vSyncTimStatusOd == HAL_OK) {
-			printf("VSyncOD timer started %d ...\r\n", value);
+		htim3.Instance->CNT = 889;
+		htim2.Instance->CNT = 624;
+
+		hdma_tim1_up.XferErrorCallback = OnDMAError;
+		hdma_tim1_up.XferCpltCallback = OnDMACplt;
+
+		uint32_t data = 0;
+		HAL_StatusTypeDef dmaStatus = HAL_DMA_Start_IT(&hdma_tim1_up, (uint32_t) &data, (uint32_t) &GPIOC->ODR, 4);
+		if (dmaStatus == HAL_OK) {
+			printf("DMA started\r\n");
 		} else {
-
+			Error_Handler();
 		}
+		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
+
+		HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_2);
+		HAL_StatusTypeDef vSyncTimStatus = HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_1);
+
+		HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_2);
+		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_1);
+		HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_4);
+
+		uint32_t value = htim3.Instance->CNT;
+		uint32_t vSyncValue = htim1.Instance->CNT;
 
 		if (hSyncTimStatus == HAL_ERROR) {
 			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
@@ -193,7 +228,7 @@ int main(void) {
 			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
 		} else {
 
-			printf("VSync timer started ...\r\n");
+			printf("VSync timer started %d ...\r\n", vSyncValue);
 		}
 
 		int32_t Tim3Freq = 40000000;
@@ -221,9 +256,6 @@ int main(void) {
 		printf("; line time: ");
 		FormatSec(vLineTime);
 		printf("\r\n");
-
-		HAL_StatusTypeDef vSyncTimStatus2 = HAL_TIM_OC_Start_IT(&htim4, TIM_CHANNEL_1);
-		HAL_StatusTypeDef hSyncTimStatus2 = HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_1);
 	}
 
 	while (1) {
@@ -356,6 +388,7 @@ static void MX_TIM1_Init(void) {
 
 	/* USER CODE END TIM1_Init 0 */
 
+	TIM_SlaveConfigTypeDef sSlaveConfig = { 0 };
 	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
 	TIM_OC_InitTypeDef sConfigOC = { 0 };
 	TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = { 0 };
@@ -366,11 +399,22 @@ static void MX_TIM1_Init(void) {
 	htim1.Instance = TIM1;
 	htim1.Init.Prescaler = 0;
 	htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim1.Init.Period = 2111;
+	htim1.Init.Period = 627;
 	htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim1.Init.RepetitionCounter = 0;
 	htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim1) != HAL_OK) {
+		Error_Handler();
+	}
 	if (HAL_TIM_PWM_Init(&htim1) != HAL_OK) {
+		Error_Handler();
+	}
+	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
+	sSlaveConfig.InputTrigger = TIM_TS_ETRF;
+	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_INVERTED;
+	sSlaveConfig.TriggerPrescaler = TIM_TRIGGERPRESCALER_DIV1;
+	sSlaveConfig.TriggerFilter = 0;
+	if (HAL_TIM_SlaveConfigSynchro(&htim1, &sSlaveConfig) != HAL_OK) {
 		Error_Handler();
 	}
 	sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
@@ -379,7 +423,7 @@ static void MX_TIM1_Init(void) {
 		Error_Handler();
 	}
 	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = 1855;
+	sConfigOC.Pulse = 624;
 	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
 	sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
 	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -438,7 +482,7 @@ static void MX_TIM2_Init(void) {
 	}
 	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
 	sSlaveConfig.InputTrigger = TIM_TS_ETRF;
-	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_NONINVERTED;
+	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_INVERTED;
 	sSlaveConfig.TriggerPrescaler = TIM_TRIGGERPRESCALER_DIV1;
 	sSlaveConfig.TriggerFilter = 0;
 	if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK) {
@@ -490,7 +534,10 @@ static void MX_TIM3_Init(void) {
 	if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) {
 		Error_Handler();
 	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+	if (HAL_TIM_OC_Init(&htim3) != HAL_OK) {
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
 	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
 	if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK) {
 		Error_Handler();
@@ -504,70 +551,19 @@ static void MX_TIM3_Init(void) {
 	}
 	__HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_1);
 	sConfigOC.Pulse = 88;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
 	if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
 		Error_Handler();
 	}
 	__HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_2);
+	sConfigOC.OCMode = TIM_OCMODE_TIMING;
+	sConfigOC.Pulse = 0;
+	if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK) {
+		Error_Handler();
+	}
 	/* USER CODE BEGIN TIM3_Init 2 */
 
 	/* USER CODE END TIM3_Init 2 */
 	HAL_TIM_MspPostInit(&htim3);
-
-}
-
-/**
- * @brief TIM4 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM4_Init(void) {
-
-	/* USER CODE BEGIN TIM4_Init 0 */
-
-	/* USER CODE END TIM4_Init 0 */
-
-	TIM_SlaveConfigTypeDef sSlaveConfig = { 0 };
-	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
-	TIM_OC_InitTypeDef sConfigOC = { 0 };
-
-	/* USER CODE BEGIN TIM4_Init 1 */
-
-	/* USER CODE END TIM4_Init 1 */
-	htim4.Instance = TIM4;
-	htim4.Init.Prescaler = 0;
-	htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim4.Init.Period = 627;
-	htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	if (HAL_TIM_Base_Init(&htim4) != HAL_OK) {
-		Error_Handler();
-	}
-	if (HAL_TIM_PWM_Init(&htim4) != HAL_OK) {
-		Error_Handler();
-	}
-	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
-	sSlaveConfig.InputTrigger = TIM_TS_ITR0;
-	if (HAL_TIM_SlaveConfigSynchro(&htim4, &sSlaveConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-	if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK) {
-		Error_Handler();
-	}
-	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = 623;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-	if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
-		Error_Handler();
-	}
-	__HAL_TIM_DISABLE_OCxPRELOAD(&htim4, TIM_CHANNEL_1);
-	/* USER CODE BEGIN TIM4_Init 2 */
-
-	/* USER CODE END TIM4_Init 2 */
-	HAL_TIM_MspPostInit(&htim4);
 
 }
 
@@ -603,6 +599,25 @@ static void MX_UART4_Init(void) {
 }
 
 /**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void) {
+
+	/* DMA controller clock enable */
+	__HAL_RCC_DMA1_CLK_ENABLE();
+	__HAL_RCC_DMA2_CLK_ENABLE();
+
+	/* DMA interrupt init */
+	/* DMA1_Stream1_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+	/* DMA2_Stream5_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
+
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -615,9 +630,13 @@ static void MX_GPIO_Init(void) {
 	__HAL_RCC_GPIOE_CLK_ENABLE();
 	__HAL_RCC_GPIOB_CLK_ENABLE();
 	__HAL_RCC_GPIOD_CLK_ENABLE();
+	__HAL_RCC_GPIOC_CLK_ENABLE();
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
+
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_11, GPIO_PIN_RESET);
 
 	/*Configure GPIO pins : PD12 PD13 PD14 PD15 */
 	GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
@@ -625,6 +644,13 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	/*Configure GPIO pin : PC11 */
+	GPIO_InitStruct.Pin = GPIO_PIN_11;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
 }
 
