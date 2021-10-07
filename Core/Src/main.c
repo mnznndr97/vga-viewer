@@ -37,6 +37,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define SCREENBUF 1000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,7 +56,7 @@ UART_HandleTypeDef huart4;
 
 /* USER CODE BEGIN PV */
 
-Int16 VideoBuffer[1056];
+Int16 VideoBuffer[SCREENBUF];
 
 /* USER CODE END PV */
 
@@ -106,6 +107,19 @@ void OnDMACplt(DMA_HandleTypeDef *dma) {
 	printf("Cplt\r\n");
 }
 
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
+	return;
+
+	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
+		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
+	} else if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
+		__HAL_TIM_DISABLE_DMA(&htim1, TIM_DMA_UPDATE);
+
+		/*while (htim1.Instance->DIER & TIM_DMA_CC2)
+		 ;*/
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -114,13 +128,12 @@ void OnDMACplt(DMA_HandleTypeDef *dma) {
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-	// We need to disable the io buffering to have the data directly sended
+// We need to disable the io buffering to have the data directly sended
 	setvbuf(stdout, NULL, _IONBF, 0);
-	uint16_t data[] = { 0xFFFF, 0x0000 };
 
-	// for (int line = 23; line < 623; line++) {
-	for (int pixel = 0; pixel < 1056; pixel++) {
-		if (pixel >= 88 && pixel < 888)
+// for (int line = 23; line < 623; line++) {
+	for (int pixel = 0; pixel < SCREENBUF; pixel++) {
+		if (pixel >= 120 && pixel < 800)
 			VideoBuffer[pixel] = 0;
 		else
 			VideoBuffer[pixel] = 0;
@@ -180,24 +193,31 @@ int main(void) {
 		GPIOC->BSRR = GPIO_PIN_11;
 		HAL_Delay(1000);
 
-		htim3.Instance->CNT = 888;
-		htim1.Instance->CNT = 624;
+		htim1.Instance->CNT = 888;
+		htim3.Instance->CNT = 264;
 
+		HAL_TIM_Base_Start(&htim3);
 		HAL_TIM_Base_Start(&htim1);
-		HAL_StatusTypeDef dmaStatus = HAL_DMA_Start(&hdma_tim1_up, (uint32_t) &VideoBuffer[0], (uint32_t) &GPIOC->ODR, 1);
+
+		HAL_StatusTypeDef dmaStatus = HAL_DMA_Start(&hdma_tim1_up, (uint32_t) &VideoBuffer[0], (uint32_t) (((char*) &GPIOC->ODR) + 1), 1);
+		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
+
 		if (dmaStatus == HAL_OK) {
 			printf("DMA started\r\n");
 		} else {
 			Error_Handler();
 		}
-		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
 
-		HAL_StatusTypeDef vSyncTimStatus = HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_1);
-		HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_2);
-		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_OC_Start(&htim3, TIM_CHANNEL_1);
+		HAL_StatusTypeDef vSyncTimStatus = HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
-		uint32_t value = htim3.Instance->CNT;
-		uint32_t vSyncValue = htim1.Instance->CNT;
+		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
+		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+
+		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_OC_Start(&htim1, TIM_CHANNEL_1);
+
+		uint32_t value = htim1.Instance->CNT;
+		uint32_t vSyncValue = htim3.Instance->CNT;
 
 		if (hSyncTimStatus == HAL_ERROR) {
 			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
@@ -212,11 +232,11 @@ int main(void) {
 			printf("VSync timer started %d ...\r\n", vSyncValue);
 		}
 
-		int32_t Tim3Freq = 40000000;
-		float hSyncFreq = Tim3Freq / (htim3.Init.Period + 1.0f);
+		int32_t HSyncTimFreq = 40000000;
+		float hSyncFreq = HSyncTimFreq / (htim1.Init.Period + 1.0f);
 		printf("Hsync frequency %f Hz\r\n", hSyncFreq);
 
-		float hNonPulseTime = Tim3Freq / ((float) htim3.Instance->CCR1);
+		float hNonPulseTime = HSyncTimFreq / ((float) htim1.Instance->CCR1);
 		hNonPulseTime = 1.0f / hNonPulseTime;
 		float hLineTime = 1.0f / hSyncFreq;
 		printf("Hsync pulse width: ");
@@ -225,11 +245,11 @@ int main(void) {
 		FormatSec(hLineTime);
 		printf("\r\n");
 
-		int32_t Tim1Freq = hSyncFreq;
-		double vSyncFreq = Tim1Freq / (htim1.Init.Period + 1.0);
+		int32_t VSyncTimFreq = hSyncFreq;
+		double vSyncFreq = VSyncTimFreq / (htim3.Init.Period + 1.0);
 		printf("Vsync frequency %f Hz\r\n", vSyncFreq);
 
-		float vNonPulseTime = Tim1Freq / ((float) htim1.Instance->CCR2);
+		float vNonPulseTime = VSyncTimFreq / ((float) htim3.Instance->CCR1);
 		vNonPulseTime = 1.0f / vNonPulseTime;
 		float vLineTime = 1.0f / vSyncFreq;
 		printf("Vsync pulse width: ");
@@ -266,12 +286,11 @@ void SystemClock_Config(void) {
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+	RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-	RCC_OscInitStruct.PLL.PLLM = 8;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+	RCC_OscInitStruct.PLL.PLLM = 4;
 	RCC_OscInitStruct.PLL.PLLN = 80;
 	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
 	RCC_OscInitStruct.PLL.PLLQ = 7;
@@ -282,11 +301,11 @@ void SystemClock_Config(void) {
 	 */
 	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
 	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
 	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
 		Error_Handler();
 	}
 }
@@ -334,7 +353,7 @@ static void MX_TIM1_Init(void) {
 
 	/* USER CODE END TIM1_Init 0 */
 
-	TIM_SlaveConfigTypeDef sSlaveConfig = { 0 };
+	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
 	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
 	TIM_OC_InitTypeDef sConfigOC = { 0 };
 	TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = { 0 };
@@ -345,22 +364,18 @@ static void MX_TIM1_Init(void) {
 	htim1.Instance = TIM1;
 	htim1.Init.Prescaler = 0;
 	htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim1.Init.Period = 627;
+	htim1.Init.Period = 1055;
 	htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim1.Init.RepetitionCounter = 0;
 	htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	if (HAL_TIM_Base_Init(&htim1) != HAL_OK) {
 		Error_Handler();
 	}
-	if (HAL_TIM_PWM_Init(&htim1) != HAL_OK) {
+	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+	if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK) {
 		Error_Handler();
 	}
-	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
-	sSlaveConfig.InputTrigger = TIM_TS_ETRF;
-	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_INVERTED;
-	sSlaveConfig.TriggerPrescaler = TIM_TRIGGERPRESCALER_DIV1;
-	sSlaveConfig.TriggerFilter = 0;
-	if (HAL_TIM_SlaveConfigSynchro(&htim1, &sSlaveConfig) != HAL_OK) {
+	if (HAL_TIM_PWM_Init(&htim1) != HAL_OK) {
 		Error_Handler();
 	}
 	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
@@ -369,7 +384,7 @@ static void MX_TIM1_Init(void) {
 		Error_Handler();
 	}
 	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = 624;
+	sConfigOC.Pulse = 928;
 	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
 	sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
 	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -379,6 +394,12 @@ static void MX_TIM1_Init(void) {
 		Error_Handler();
 	}
 	__HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_1);
+	sConfigOC.Pulse = 88;
+	sConfigOC.OCIdleState = TIM_OCIDLESTATE_SET;
+	if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
+		Error_Handler();
+	}
+	__HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_2);
 	sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
 	sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
 	sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
@@ -407,7 +428,7 @@ static void MX_TIM3_Init(void) {
 
 	/* USER CODE END TIM3_Init 0 */
 
-	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
+	TIM_SlaveConfigTypeDef sSlaveConfig = { 0 };
 	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
 	TIM_OC_InitTypeDef sConfigOC = { 0 };
 
@@ -417,17 +438,21 @@ static void MX_TIM3_Init(void) {
 	htim3.Instance = TIM3;
 	htim3.Init.Prescaler = 0;
 	htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim3.Init.Period = 1055;
+	htim3.Init.Period = 627;
 	htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	if (HAL_TIM_Base_Init(&htim3) != HAL_OK) {
 		Error_Handler();
 	}
-	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-	if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK) {
+	if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) {
 		Error_Handler();
 	}
-	if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) {
+	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
+	sSlaveConfig.InputTrigger = TIM_TS_ETRF;
+	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_INVERTED;
+	sSlaveConfig.TriggerPrescaler = TIM_TRIGGERPRESCALER_DIV1;
+	sSlaveConfig.TriggerFilter = 0;
+	if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK) {
 		Error_Handler();
 	}
 	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
@@ -436,16 +461,23 @@ static void MX_TIM3_Init(void) {
 		Error_Handler();
 	}
 	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = 928;
+	sConfigOC.Pulse = 624;
 	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
 	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 	if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
 		Error_Handler();
 	}
-	sConfigOC.Pulse = 88;
+	__HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_1);
+	sConfigOC.Pulse = 23;
 	if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
 		Error_Handler();
 	}
+	__HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_2);
+	sConfigOC.Pulse = 623;
+	if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK) {
+		Error_Handler();
+	}
+	__HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_3);
 	/* USER CODE BEGIN TIM3_Init 2 */
 
 	/* USER CODE END TIM3_Init 2 */
@@ -508,6 +540,7 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
 
 	/* GPIO Ports Clock Enable */
+	__HAL_RCC_GPIOH_CLK_ENABLE();
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 	__HAL_RCC_GPIOE_CLK_ENABLE();
 	__HAL_RCC_GPIOB_CLK_ENABLE();
