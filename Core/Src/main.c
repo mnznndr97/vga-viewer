@@ -37,7 +37,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SCREENBUF 1000
+#define SCREENBUF 200
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -50,13 +50,14 @@ I2C_HandleTypeDef hi2c2;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
-DMA_HandleTypeDef hdma_tim1_up;
 
 UART_HandleTypeDef huart4;
 
+DMA_HandleTypeDef hdma_memtomem_dma2_stream0;
 /* USER CODE BEGIN PV */
 
-Int16 VideoBuffer[SCREENBUF];
+BYTE VideoBuffer[SCREENBUF];
+int _videoActive = 0;
 
 /* USER CODE END PV */
 
@@ -107,13 +108,46 @@ void OnDMACplt(DMA_HandleTypeDef *dma) {
 	printf("Cplt\r\n");
 }
 
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
-	return;
+void TIM1_CC_IRQHandler1(void) {
 
-	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
-		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
-	} else if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
-		__HAL_TIM_DISABLE_DMA(&htim1, TIM_DMA_UPDATE);
+	if ((TIM1->SR & TIM_FLAG_CC2) == 0)
+		return;
+
+	/*if (__HAL_TIM_GET_IT_SOURCE(&htim1, TIM_IT_CC2) == RESET)
+	 return;*/
+
+	CLEAR_BIT(TIM1->SR, TIM_IT_CC2);
+
+	if (_videoActive == 0)
+		return;
+
+	uint32_t counter = DMA2_Stream0->NDTR;
+	if (counter > 0) {
+		Error_Handler();
+	}
+
+	while (READ_BIT(DMA2_Stream0->CR, DMA_SxCR_EN) != 0) {
+
+	}
+	/*if (hdma_memtomem_dma2_stream0.Instance->CR & DMA_SxCR_EN) {
+	 Error_Handler();
+	 }*/
+
+	SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0| DMA_LIFCR_CHTIF0);
+	CLEAR_BIT(DMA2_Stream0->CR, DMA_SxCR_DBM);
+	DMA2_Stream0->NDTR = SCREENBUF / 4;
+	DMA2_Stream0->PAR = (uint32_t) &VideoBuffer[0];
+	DMA2_Stream0->M0AR = (uint32_t) (((char*) &GPIOC->ODR) + 1);
+
+	SET_BIT(DMA2_Stream0->CR, DMA_SxCR_EN);
+}
+
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
+	if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2) {
+		//__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
+		_videoActive = 1;
+	} else if (htim->Instance == TIM3 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
+		_videoActive = 0;
 
 		/*while (htim1.Instance->DIER & TIM_DMA_CC2)
 		 ;*/
@@ -133,11 +167,12 @@ int main(void) {
 
 // for (int line = 23; line < 623; line++) {
 	for (int pixel = 0; pixel < SCREENBUF; pixel++) {
-		if (pixel >= 120 && pixel < 800)
-			VideoBuffer[pixel] = 0;
+		if (pixel >= 5 && pixel < 150)
+			VideoBuffer[pixel] = GPIO_PIN_11 >> 8;
 		else
 			VideoBuffer[pixel] = 0;
 	}
+
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -190,31 +225,36 @@ int main(void) {
 		EDIDDumpStructure(pEdid);
 		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
 
-		GPIOC->BSRR = GPIO_PIN_11;
+		SET_BIT(GPIOC->BSRR, GPIO_PIN_11);
 		HAL_Delay(1000);
 
 		htim1.Instance->CNT = 888;
 		htim3.Instance->CNT = 264;
 
+		hdma_memtomem_dma2_stream0.XferErrorCallback = OnDMAError;
+		/*HAL_StatusTypeDef dmaStatus = HAL_DMA_Start(&hdma_memtomem_dma2_stream0, (uint32_t) &VideoBuffer[0], (uint32_t) (((char*) &GPIOC->ODR) + 1), 5);
+		 HAL_DMA_PollForTransfer(&hdma_memtomem_dma2_stream0, HAL_DMA_FULL_TRANSFER, HAL_MAX_DELAY);*/
+		//__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
+		while (READ_BIT(DMA2_Stream0->CR, DMA_SxCR_EN)) {
+
+		}
+
 		HAL_TIM_Base_Start(&htim3);
 		HAL_TIM_Base_Start(&htim1);
 
-		HAL_StatusTypeDef dmaStatus = HAL_DMA_Start(&hdma_tim1_up, (uint32_t) &VideoBuffer[0], (uint32_t) (((char*) &GPIOC->ODR) + 1), 1);
-		__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
-
-		if (dmaStatus == HAL_OK) {
-			printf("DMA started\r\n");
-		} else {
-			Error_Handler();
-		}
+		/*if (dmaStatus == HAL_OK) {
+		 printf("DMA started\r\n");
+		 } else {
+		 Error_Handler();
+		 }*/
 
 		HAL_StatusTypeDef vSyncTimStatus = HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
 		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
 		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
 
-		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_OC_Start(&htim1, TIM_CHANNEL_1);
+		HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_2);
+		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 
 		uint32_t value = htim1.Instance->CNT;
 		uint32_t vSyncValue = htim3.Instance->CNT;
@@ -518,16 +558,31 @@ static void MX_UART4_Init(void) {
 
 /**
  * Enable DMA controller clock
+ * Configure DMA for memory to memory transfers
+ *   hdma_memtomem_dma2_stream0
  */
 static void MX_DMA_Init(void) {
 
 	/* DMA controller clock enable */
 	__HAL_RCC_DMA2_CLK_ENABLE();
 
-	/* DMA interrupt init */
-	/* DMA2_Stream5_IRQn interrupt configuration */
-	HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
-	HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
+	/* Configure DMA request hdma_memtomem_dma2_stream0 on DMA2_Stream0 */
+	hdma_memtomem_dma2_stream0.Instance = DMA2_Stream0;
+	hdma_memtomem_dma2_stream0.Init.Channel = DMA_CHANNEL_0;
+	hdma_memtomem_dma2_stream0.Init.Direction = DMA_MEMORY_TO_MEMORY;
+	hdma_memtomem_dma2_stream0.Init.PeriphInc = DMA_PINC_ENABLE;
+	hdma_memtomem_dma2_stream0.Init.MemInc = DMA_MINC_DISABLE;
+	hdma_memtomem_dma2_stream0.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
+	hdma_memtomem_dma2_stream0.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+	hdma_memtomem_dma2_stream0.Init.Mode = DMA_NORMAL;
+	hdma_memtomem_dma2_stream0.Init.Priority = DMA_PRIORITY_VERY_HIGH;
+	hdma_memtomem_dma2_stream0.Init.FIFOMode = DMA_FIFOMODE_ENABLE;
+	hdma_memtomem_dma2_stream0.Init.FIFOThreshold = DMA_FIFO_THRESHOLD_FULL;
+	hdma_memtomem_dma2_stream0.Init.MemBurst = DMA_MBURST_INC16;
+	hdma_memtomem_dma2_stream0.Init.PeriphBurst = DMA_PBURST_INC4;
+	if (HAL_DMA_Init(&hdma_memtomem_dma2_stream0) != HAL_OK) {
+		Error_Handler();
+	}
 
 }
 
@@ -581,7 +636,11 @@ void Error_Handler(void) {
 	/* USER CODE BEGIN Error_Handler_Debug */
 	/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
+
+	CLEAR_BIT(GPIOD->ODR, (GPIO_PIN_12 |GPIO_PIN_13 |GPIO_PIN_15));
+	GPIOD->ODR |= GPIO_PIN_14;
 	while (1) {
+
 	}
 	/* USER CODE END Error_Handler_Debug */
 }
