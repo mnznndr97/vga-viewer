@@ -6,7 +6,7 @@
  */
 
 #include <screen\screen.h>
-#include <assert.h>
+#include <assertion.h>
 #include "stm32f4xx_hal.h"
 
 void ScreenCheckVideoLineEnded() {
@@ -28,8 +28,7 @@ void ScreenEnableDMA(BYTE *VideoBuffer) {
 	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_DBM);
 	DMA_SCREEN_STREAM->NDTR = SCREENBUF;
 	DMA_SCREEN_STREAM->M0AR = (uint32_t) VideoBuffer;
-	DMA_SCREEN_STREAM->PAR = (uint32_t) (((char*) &GPIOC->ODR) + 0);
-
+	
 	SET_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
 	SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
 }
@@ -93,9 +92,15 @@ void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
 	hSyncTimer->ARR = (WholeLine / 4) - 1;
 	hSyncTimer->CNT = 0;
 
-	hSyncTimer->CCR1 = (WholeLine - HSyncPulse) / 4;
-	hSyncTimer->CCR2 = (HBackPorch) / 4;
-	hSyncTimer->CCR3 = (HBackPorch + HVisibleArea) / 4;
+	hSyncTimer->CCR1 = (WholeLine - HSyncPulse) / 4; // Main HSYNC signal
+	hSyncTimer->CCR2 = (HBackPorch) / 4; // Black porch VSYNC trigger
+	hSyncTimer->CCR3 = ((HBackPorch) / 4) - 22; // DMA start (video line render start)
+	hSyncTimer->CCR4 = (HBackPorch + HVisibleArea) / 4; // DMA end (video line render end)
+
+	DebugAssert(hSyncTimer->CCR1 >= 0);
+	DebugAssert(hSyncTimer->CCR2 >= 0 && hSyncTimer->CCR2 < hSyncTimer->CCR1);
+	DebugAssert(hSyncTimer->CCR3 >= 0 && hSyncTimer->CCR3 < hSyncTimer->CCR1);
+	DebugAssert(hSyncTimer->CCR4 >= 0 && hSyncTimer->CCR4 >= hSyncTimer->CCR3  && hSyncTimer->CCR4 < hSyncTimer->CCR1);
 
 	/* *** Vertical sync setup *** */
 
@@ -108,4 +113,7 @@ void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
 	vSyncTimer->CCR3 = (VBackPorch + VVisibleArea); // VideoEnd signal
 
 	//SET_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
+
+	// DMA Destination is fixed so we can simply set it one time only
+	DMA_SCREEN_STREAM->PAR = (uint32_t) (((char*) &GPIOC->ODR) + 0);
 }

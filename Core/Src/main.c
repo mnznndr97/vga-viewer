@@ -117,8 +117,8 @@ void OnDMACplt(DMA_HandleTypeDef *dma) {
 
 void TIM1_CC_IRQHandler(void) {
 	UInt32 timStatus = TIM1->SR;
-	bool isLineStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC2) != 0;
-	bool isLineEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC3) != 0;
+	bool isLineStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC3) != 0;
+	bool isLineEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC4) != 0;
 
 	if (!isLineStartIRQ && !isLineEndIRQ) {
 		// We are handling an interrupt that should not be enabled
@@ -128,13 +128,13 @@ void TIM1_CC_IRQHandler(void) {
 	}
 
 	if (isLineStartIRQ) {
-		CLEAR_BIT(TIM1->SR, TIM_FLAG_CC2);
+		CLEAR_BIT(TIM1->SR, TIM_FLAG_CC3);
 		if (_videoActive) {
 			ScreenCheckVideoLineEnded();
 			ScreenEnableDMA(&VideoBuffer[0]);
 		}
 	} else {
-		CLEAR_BIT(TIM1->SR, TIM_FLAG_CC3);
+		CLEAR_BIT(TIM1->SR, TIM_FLAG_CC4);
 
 		if (_videoActive) {
 			ScreenDisableDMA();
@@ -267,19 +267,14 @@ int main(void)
 		HAL_TIM_Base_Start(&htim3);
 		HAL_TIM_Base_Start(&htim1);
 
-		/*if (dmaStatus == HAL_OK) {
-		 printf("DMA started\r\n");
-		 } else {
-		 Error_Handler();
-		 }*/
-
 		HAL_StatusTypeDef vSyncTimStatus = HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
 		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
 		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
 
-		HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_2);
+		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 		HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_3);
+		HAL_TIM_PWM_Start_IT(&htim1, TIM_CHANNEL_4);
 		HAL_StatusTypeDef hSyncTimStatus = HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 
 		HAL_TIM_Base_Start(&htim4);
@@ -535,13 +530,18 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_2);
-  sConfigOC.Pulse = 888;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
   __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_3);
+  sConfigOC.Pulse = 888;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_4);
   sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
   sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
