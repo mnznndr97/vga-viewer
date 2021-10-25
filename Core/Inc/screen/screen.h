@@ -10,7 +10,7 @@
 
 #include <typedefs.h>
 
-#define SCREENBUF 100
+#define SCREENBUF 120
 #define DMA_SCREEN_STREAM DMA2_Stream0
 
 extern void Error_Handler(void);

@@ -24,16 +24,12 @@ void ScreenCheckVideoLineEnded() {
 }
 
 void ScreenEnableDMA(BYTE *VideoBuffer) {
-	SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0);
-	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_DBM);
-	DMA_SCREEN_STREAM->NDTR = SCREENBUF;
-	DMA_SCREEN_STREAM->M0AR = (uint32_t) VideoBuffer;
-	
+	// ENABLE Bit for the DMA should already have been set. We just enable the trigger request
 	SET_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
-	SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
+	// SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
 }
 
-void ScreenDisableDMA() {
+void ScreenDisableDMA(BYTE *VideoBuffer) {
 	BOOL dmaEnabled = READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0;
 	UInt32 dataStilltoRead = DMA_SCREEN_STREAM->NDTR;
 	if (dmaEnabled) {
@@ -41,11 +37,12 @@ void ScreenDisableDMA() {
 	}
 
 	CLEAR_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
-	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
+	// We prepare the DMA to preload the next line
 
 	// We have to wait that DMA_SxCR_EN is effectively set to 0
-	while (READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0)
-		;
+	//while (READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0)
+	//	;
+
 
 	if (dataStilltoRead > 0) {
 		// DMA is disabled but not all data have been consumed. It cannot keep
@@ -68,6 +65,13 @@ void ScreenDisableDMA() {
 		// FIFO transfer mode error
 		//Error_Handler();
 	}
+
+	SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0);
+	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_DBM);
+	DMA_SCREEN_STREAM->NDTR = SCREENBUF;
+	DMA_SCREEN_STREAM->M0AR = (uint32_t) VideoBuffer;
+
+	SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
 }
 
 void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
@@ -94,7 +98,7 @@ void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
 
 	hSyncTimer->CCR1 = (WholeLine - HSyncPulse) / 4; // Main HSYNC signal
 	hSyncTimer->CCR2 = (HBackPorch) / 4; // Black porch VSYNC trigger
-	hSyncTimer->CCR3 = ((HBackPorch) / 4) - 22; // DMA start (video line render start)
+	hSyncTimer->CCR3 = ((HBackPorch) / 4) - 21; // DMA start (video line render start)
 	hSyncTimer->CCR4 = (HBackPorch + HVisibleArea) / 4; // DMA end (video line render end)
 
 	DebugAssert(hSyncTimer->CCR1 >= 0);

@@ -60,8 +60,8 @@ UART_HandleTypeDef huart4;
 
 /* USER CODE BEGIN PV */
 
-__attribute__((section(".ram_data")))         BYTE VideoBuffer[200 * 150 * 2];
-__attribute__((section(".ram_data")))         BYTE VideoBuffer2[200 * 150];
+__attribute__((section(".ram_data")))                 BYTE VideoBuffer[200 * 150 * 2];
+__attribute__((section(".ram_data")))                 BYTE VideoBuffer2[200 * 150];
 volatile int _videoActive = 0;
 
 /* USER CODE END PV */
@@ -117,50 +117,25 @@ void OnDMACplt(DMA_HandleTypeDef *dma) {
 
 void TIM1_CC_IRQHandler(void) {
 	UInt32 timStatus = TIM1->SR;
-	bool isLineStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC3) != 0;
-	bool isLineEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC4) != 0;
+	UInt32 isLineStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC3);
+	UInt32 isLineEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC4);
 
-	if (!isLineStartIRQ && !isLineEndIRQ) {
-		// We are handling an interrupt that should not be enabled
-		Error_Handler();
-	} else if (isLineStartIRQ && isLineEndIRQ) {
-		Error_Handler();
-	}
+	CLEAR_BIT(TIM1->SR, isLineStartIRQ | isLineEndIRQ);
 
-	if (isLineStartIRQ) {
-		CLEAR_BIT(TIM1->SR, TIM_FLAG_CC3);
+	if (isLineStartIRQ != 0) {
 		if (_videoActive) {
-			ScreenCheckVideoLineEnded();
+			//ScreenCheckVideoLineEnded();
 			ScreenEnableDMA(&VideoBuffer[0]);
 		}
-	} else {
-		CLEAR_BIT(TIM1->SR, TIM_FLAG_CC4);
-
+	} else if (isLineEndIRQ != 0) {
 		if (_videoActive) {
-			ScreenDisableDMA();
+			ScreenDisableDMA(&VideoBuffer[0]);
 		}
+	} else {
+		// We are handling an interrupt that should not be enabled
+		Error_Handler();
 	}
 
-	/*uint32_t counter = DMA2_Stream0->NDTR;
-	 if (counter > 0) {
-	 Error_Handler();
-	 }
-
-	 while (READ_BIT(DMA2_Stream0->CR, DMA_SxCR_EN) != 0) {
-
-	 }
-
-	 if (hdma_memtomem_dma2_stream0.Instance->CR & DMA_SxCR_EN) {
-	 Error_Handler();
-	 }
-
-	 SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0| DMA_LIFCR_CHTIF0);
-	 CLEAR_BIT(DMA2_Stream0->CR, DMA_SxCR_DBM);
-	 DMA2_Stream0->NDTR = SCREENBUF / 4;
-	 DMA2_Stream0->PAR = (uint32_t) &VideoBuffer[0];
-	 DMA2_Stream0->M0AR = (uint32_t) (((char*) &GPIOC->ODR) + 1);
-
-	 SET_BIT(DMA2_Stream0->CR, DMA_SxCR_EN);*/
 }
 
 void TIM3_IRQHandler() {
