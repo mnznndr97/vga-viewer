@@ -9,6 +9,9 @@
 #include <assertion.h>
 #include "stm32f4xx_hal.h"
 
+extern UInt32 _currentLineAddr;
+extern BYTE _currentLinePrescaler;
+
 void ScreenCheckVideoLineEnded() {
 	if (READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0) {
 		// DMA is still enabled. Something went wrong
@@ -23,16 +26,16 @@ void ScreenCheckVideoLineEnded() {
 	}
 }
 
-void ScreenEnableDMA(BYTE *VideoBuffer) {
+void ScreenEnableDMA() {
 	// ENABLE Bit for the DMA should already have been set. We just enable the trigger request
 	SET_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
 	// SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
 }
 
-void ScreenDisableDMA(BYTE *VideoBuffer) {
+void ScreenDisableDMA() {
 	BOOL dmaEnabled = READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0;
 	UInt32 dataStilltoRead = DMA_SCREEN_STREAM->NDTR;
-	if (dmaEnabled) {
+	if (dmaEnabled && dataStilltoRead > 0) {
 		Error_Handler();
 	}
 
@@ -40,15 +43,8 @@ void ScreenDisableDMA(BYTE *VideoBuffer) {
 	// We prepare the DMA to preload the next line
 
 	// We have to wait that DMA_SxCR_EN is effectively set to 0
-	//while (READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0)
-	//	;
-
-
-	if (dataStilltoRead > 0) {
-		// DMA is disabled but not all data have been consumed. It cannot keep
-		// up with the screen times
-		Error_Handler();
-	}
+	while (READ_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN) != 0)
+		;
 
 	// Let's check if something has gone wrong
 	// We read the register a single time and then we do all the checks
@@ -69,9 +65,15 @@ void ScreenDisableDMA(BYTE *VideoBuffer) {
 	SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0);
 	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_DBM);
 	DMA_SCREEN_STREAM->NDTR = SCREENBUF;
-	DMA_SCREEN_STREAM->M0AR = (uint32_t) VideoBuffer;
+	DMA_SCREEN_STREAM->M0AR = _currentLineAddr;
 
 	SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
+
+	_currentLinePrescaler = (_currentLinePrescaler + 1) % 4;
+	if (_currentLinePrescaler == 0) {
+		_currentLineAddr += SCREENBUF;
+	}
+
 }
 
 void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
@@ -98,13 +100,13 @@ void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
 
 	hSyncTimer->CCR1 = (WholeLine - HSyncPulse) / 4; // Main HSYNC signal
 	hSyncTimer->CCR2 = (HBackPorch) / 4; // Black porch VSYNC trigger
-	hSyncTimer->CCR3 = ((HBackPorch) / 4) - 21; // DMA start (video line render start)
-	hSyncTimer->CCR4 = (HBackPorch + HVisibleArea) / 4; // DMA end (video line render end)
+	hSyncTimer->CCR3 = ((HBackPorch) / 4) - 15; // DMA start (video line render start)
+	hSyncTimer->CCR4 = ((HBackPorch + HVisibleArea) / 4) + 8; // DMA end (video line render end)
 
 	DebugAssert(hSyncTimer->CCR1 >= 0);
 	DebugAssert(hSyncTimer->CCR2 >= 0 && hSyncTimer->CCR2 < hSyncTimer->CCR1);
 	DebugAssert(hSyncTimer->CCR3 >= 0 && hSyncTimer->CCR3 < hSyncTimer->CCR1);
-	DebugAssert(hSyncTimer->CCR4 >= 0 && hSyncTimer->CCR4 >= hSyncTimer->CCR3  && hSyncTimer->CCR4 < hSyncTimer->CCR1);
+	DebugAssert(hSyncTimer->CCR4 >= 0 && hSyncTimer->CCR4 >= hSyncTimer->CCR3 && hSyncTimer->CCR4 < hSyncTimer->CCR1);
 
 	/* *** Vertical sync setup *** */
 

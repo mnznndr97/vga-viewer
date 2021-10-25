@@ -23,14 +23,7 @@ typedef enum _EDIDAnalogVoltage {
 } EDIDAnalogVoltage;
 
 typedef enum _EDIDTiming {
-	EDIDTiming720x400At70Hz = 7,
-	EDIDTiming720x400At88Hz = 6,
-	EDIDTiming640x480At60Hz = 5,
-	EDIDTiming640x480At67Hz = 4,
-	EDIDTiming640x480At72Hz = 3,
-	EDIDTiming640x480At75Hz = 2,
-	EDIDTiming800x600At56Hz = 1,
-	EDIDTiming800x600At60Hz = 0,
+	EDIDTiming720x400At70Hz = 7, EDIDTiming720x400At88Hz = 6, EDIDTiming640x480At60Hz = 5, EDIDTiming640x480At67Hz = 4, EDIDTiming640x480At72Hz = 3, EDIDTiming640x480At75Hz = 2, EDIDTiming800x600At56Hz = 1, EDIDTiming800x600At60Hz = 0,
 
 	EDIDTiming1024x728At60Hz = 11,
 } EDIDTiming;
@@ -116,14 +109,14 @@ typedef struct _EDIDDetailedTimingDescriptor {
 	BYTE HBlanckingPixelsLSBs;
 	/* Start Byte 4 */
 	BYTE HBlanckingPixelsMSBs :4; // Bit 3-0
-	BYTE HActivePixelsMSBs :4; // Bit 7-4
+	BYTE HActivePixelsMSBs :4;	   // Bit 7-4
 	/* End */
 
 	BYTE VActivePixelsLSBs;
 	BYTE VBlanckingPixelsLSBs;
 	/* Start Byte 7 */
 	BYTE VBlanckingPixelsMSBs :4; // Bit 3-0
-	BYTE VActivePixelsMSBs :4; // Bit 7-4
+	BYTE VActivePixelsMSBs :4;	   // Bit 7-4
 	/* Start Byte 4 */
 
 	BYTE HFrontPorchLSBs;
@@ -176,19 +169,19 @@ inline float EDIDGetGamma(const EDID *edid) {
 	return 1.0f + (edid->BasicDisplayParameters.DisplayGamma / 100.0f);
 }
 
-inline BOOL EDIDIsChecksumValid(const EDID *edid);
-inline BOOL EDIDIsTimingSupported(const EDID *edid, EDIDTiming timing);
+BOOL EDIDIsChecksumValid(const EDID *edid);
+BOOL EDIDIsTimingSupported(const EDID *edid, EDIDTiming timing);
 
 inline BOOL EDIDIsTimingInfoFilled(const EDIDTimingInformation *edidTimingInfo) {
 	BYTE *bytePtr = (BYTE*) edidTimingInfo;
 	return bytePtr[0] != 0x01 && bytePtr[1] != 0x01;
 }
 
-inline Int32 EDIDDTDMergeBits(BYTE lsb, BYTE msb);
+Int32 EDIDDTDMergeBits(BYTE lsb, BYTE msb);
 
 void EDIDGetManufacturer(const EDID *edid, char *buffer);
 
-inline Int32 EDIDDTDGetHorizontalActivePixels(const EDIDDetailedTimingDescriptor *detInfo);
+Int32 EDIDDTDGetHorizontalActivePixels(const EDIDDetailedTimingDescriptor *detInfo);
 
 inline Int32 EDIDDTDGetHorizontalBlankingPixels(const EDIDDetailedTimingDescriptor *detInfo) {
 	return EDIDDTDMergeBits(detInfo->HBlanckingPixelsLSBs, detInfo->HBlanckingPixelsMSBs);
@@ -273,7 +266,6 @@ static void __staticasserts() {
 	static_assert(offsetof(EDID, Descriptor4) == 108);
 	static_assert(offsetof(EDID, Extensions) == 126);
 	static_assert(offsetof(EDID, Checksum) == 127);
-
 }
 
 #endif

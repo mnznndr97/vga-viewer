@@ -10,6 +10,6 @@
 
 #include <stdbool.h>
 
-inline void DebugAssert(bool condition);
+void DebugAssert(bool condition);
 
 #endif /* INC_ASSERTION_H_ */
