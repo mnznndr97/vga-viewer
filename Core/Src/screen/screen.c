@@ -63,7 +63,6 @@ void ScreenDisableDMA() {
 	}
 
 	SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0);
-	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_DBM);
 	DMA_SCREEN_STREAM->NDTR = SCREENBUF;
 	DMA_SCREEN_STREAM->M0AR = _currentLineAddr;
 
@@ -94,14 +93,16 @@ void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
 
 	/* *** Horizontal sync setup *** */
 
+	const int divider = 2;
+
 	// We set the clock division by clearing the bits and setting the new ones
-	hSyncTimer->ARR = (WholeLine / 4) - 1;
+	hSyncTimer->ARR = (WholeLine / divider) - 1;
 	hSyncTimer->CNT = 0;
 
-	hSyncTimer->CCR1 = (WholeLine - HSyncPulse) / 4; // Main HSYNC signal
-	hSyncTimer->CCR2 = (HBackPorch) / 4; // Black porch VSYNC trigger
-	hSyncTimer->CCR3 = ((HBackPorch) / 4) - 15; // DMA start (video line render start)
-	hSyncTimer->CCR4 = ((HBackPorch + HVisibleArea) / 4) + 8; // DMA end (video line render end)
+	hSyncTimer->CCR1 = (WholeLine - HSyncPulse) / divider; // Main HSYNC signal
+	hSyncTimer->CCR2 = (HBackPorch) / divider; // Black porch VSYNC trigger
+	hSyncTimer->CCR3 = ((HBackPorch) / divider) - 15; // DMA start (video line render start)
+	hSyncTimer->CCR4 = ((HBackPorch + HVisibleArea) / divider) + 8; // DMA end (video line render end)
 
 	DebugAssert(hSyncTimer->CCR1 >= 0);
 	DebugAssert(hSyncTimer->CCR2 >= 0 && hSyncTimer->CCR2 < hSyncTimer->CCR1);
@@ -122,4 +123,14 @@ void ScreenInitialize(TIM_TypeDef *hSyncTimer, TIM_TypeDef *vSyncTimer) {
 
 	// DMA Destination is fixed so we can simply set it one time only
 	DMA_SCREEN_STREAM->PAR = (uint32_t) (((char*) &GPIOC->ODR) + 0);
+	CLEAR_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_DBM);
+	DMA_SCREEN_STREAM->NDTR = SCREENBUF;
+	DMA_SCREEN_STREAM->M0AR = _currentLineAddr;
+
+	SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
+
+	_currentLinePrescaler = (_currentLinePrescaler + 1) % 4;
+	if (_currentLinePrescaler == 0) {
+		_currentLineAddr += SCREENBUF;
+	}
 }
