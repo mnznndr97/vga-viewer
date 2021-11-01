@@ -11,6 +11,13 @@
 #ifndef INC_TYPEDEFS_H_
 #define INC_TYPEDEFS_H_
 
+#ifdef __INTELLISENSE__
+
+#define __attribute__(A) /* do nothing */
+#define section(A) /* do nothing */
+
+#endif
+
 typedef bool BOOL;
 typedef int8_t SBYTE;
 typedef int16_t Int16;

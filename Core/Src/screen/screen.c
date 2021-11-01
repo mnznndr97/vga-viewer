@@ -17,7 +17,6 @@ void ScreenCheckVideoLineEnded() {
 		// DMA is still enabled. Something went wrong
 		Error_Handler();
 	}
-
 	UInt32 dataStilltoRead = DMA_SCREEN_STREAM->NDTR;
 	if (dataStilltoRead > 0) {
 		// DMA is disabled but not all data have been consumed. It cannot keep
@@ -68,7 +67,7 @@ void ScreenDisableDMA() {
 
 	SET_BIT(DMA_SCREEN_STREAM->CR, DMA_SxCR_EN);
 
-	_currentLinePrescaler = (_currentLinePrescaler + 1) % 4;
+	_currentLinePrescaler = (_currentLinePrescaler + 1) % 2;
 	if (_currentLinePrescaler == 0) {
 		_currentLineAddr += SCREENBUF;
 	}

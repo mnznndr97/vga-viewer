@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31815.197
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VGAViewer", "VGAViewer.vcxproj", "{7C38EDA7-6B86-4E31-AFF0-EB7FFB82E7A6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{A247D29D-7A15-4181-BA81-EAB37CA7A0F7}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|ARM = Debug|ARM
+		Release|ARM = Release|ARM
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7C38EDA7-6B86-4E31-AFF0-EB7FFB82E7A6}.Debug|ARM.ActiveCfg = Debug|ARM
+		{7C38EDA7-6B86-4E31-AFF0-EB7FFB82E7A6}.Debug|ARM.Build.0 = Debug|ARM
+		{7C38EDA7-6B86-4E31-AFF0-EB7FFB82E7A6}.Release|ARM.ActiveCfg = Release|ARM
+		{7C38EDA7-6B86-4E31-AFF0-EB7FFB82E7A6}.Release|ARM.Build.0 = Release|ARM
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A9ABB10E-2FD8-4143-8D72-229FD8B5985A}
+	EndGlobalSection
+EndGlobal

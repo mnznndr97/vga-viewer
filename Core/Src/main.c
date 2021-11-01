@@ -29,6 +29,7 @@
 #include <typedefs.h>
 #include <crc7.h>
 #include <vga/edid.h>
+#include <vga/vgascreenbuffer.h>
 #include <screen/screen.h>
 /* USER CODE END Includes */
 
@@ -60,7 +61,7 @@ UART_HandleTypeDef huart4;
 
 /* USER CODE BEGIN PV */
 
-__attribute__((section(".ram_data")))                                     BYTE VideoBuffer[400 * 300];
+__attribute__((section(".ram_data")))                                           BYTE VideoBuffer[400 * 300];
 volatile int _videoActive = 0;
 
 BYTE _currentLinePrescaler = 0;
@@ -163,7 +164,7 @@ void TIM3_IRQHandler() {
 		_videoActive = 0;
 	}
 
-	if(HAL_NVIC_GetPendingIRQ(TIM3_IRQn)){
+	if (HAL_NVIC_GetPendingIRQ(TIM3_IRQn)) {
 		Error_Handler();
 	}
 }
@@ -180,8 +181,10 @@ int main(void)
 	// We need to disable the io buffering to have the data directly sended
 	setvbuf(stdout, NULL, _IONBF, 0);
 
+	VideoFrameInfo info = VideoFrame800x600at60Hz;
+
 	SET_BIT(DBGMCU->APB1FZ, DBGMCU_APB1_FZ_DBG_TIM4_STOP);
-	for (int line = 0; line < 150; line++) {
+	for (int line = 0; line < 300; line++) {
 		for (int pixel = 0; pixel < SCREENBUF; pixel++) {
 
 			if (line > 50 && line < 100 && pixel > 25 && pixel < SCREENBUF - 30)
@@ -353,7 +356,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 80;
+  RCC_OscInitStruct.PLL.PLLN = 120;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -369,7 +372,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -643,7 +646,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 0;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 1;
+  htim4.Init.Period = 2;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)

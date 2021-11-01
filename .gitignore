@@ -1,2 +1,8 @@
 /Debug/
 .vscode
+.vs
+
+*.filters
+*.user
+
+/ARM/
