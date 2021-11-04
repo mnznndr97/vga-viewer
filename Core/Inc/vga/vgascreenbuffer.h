@@ -34,7 +34,7 @@ typedef enum _VGAError {
 } VGAError;
 
 /**
- * @brief Generic timing informations of a Scanline or a Frame
+ * @brief Generic timing informations of a Scanline or a Frame (expressed in pixel counts)
  */
 typedef struct _Timing {
     UInt16 VisibleArea;
@@ -81,5 +81,14 @@ extern VideoFrameInfo VideoFrame800x600at60Hz;
  * @return VGA status
 */
 VGAError VGACreateScreenBuffer(const VGAVisualizationInfo* visualizationInfo, ScreenBuffer* screenBuffer);
+
+
+/**
+ * @brief Get the sum of all the pixels count in a Timing instance
+ * 
+ * @return -1 if pointer is invalid, pixel sum otherwhise
+*/
+Int32 VGATimingGetSum(const Timing* timing);
+
 
 #endif /* INC_VGA_VGASCREENBUFFER_H_ */
