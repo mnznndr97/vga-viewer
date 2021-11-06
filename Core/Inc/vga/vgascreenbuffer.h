@@ -9,10 +9,12 @@
 #define INC_VGA_VGASCREENBUFFER_H_
 
 #include <screen/screenbuffer.h>
+#include <typedefs.h>
 
  // ##### Internal forward declarations #####
 
 enum VGAState;
+typedef struct _VGAScreenBuffer VGAScreenBuffer;
 
 // ##### Public struct and enums declarations #####
 
@@ -34,9 +36,10 @@ typedef enum _VGAError {
 } VGAError;
 
 /**
- * @brief Generic timing informations of a Scanline or a Frame (expressed in pixel counts)
+ * @brief Generic timing informations of a Scanline or a Frame, expressed in items count
  */
 typedef struct _Timing {
+    /// Number of visible items (pixels or lines) in the current timing
     UInt16 VisibleArea;
     UInt16 FrontPorch;
     UInt16 SyncPulse;
@@ -80,7 +83,7 @@ extern VideoFrameInfo VideoFrame800x600at60Hz;
  * @param screenBuffer Filled ScreenBuffer struct with the relative data
  * @return VGA status
 */
-VGAError VGACreateScreenBuffer(const VGAVisualizationInfo* visualizationInfo, ScreenBuffer* screenBuffer);
+VGAError VGACreateScreenBuffer(const VGAVisualizationInfo* visualizationInfo, VGAScreenBuffer* screenBuffer);
 
 
 /**

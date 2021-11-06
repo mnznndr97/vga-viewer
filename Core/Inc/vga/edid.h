@@ -6,6 +6,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+/// I2C device address for the EDID structure
+/// \link https://en.wikipedia.org/wiki/Display_Data_Channel#DDC2 Source Reference \endlink
+#define EDID_DDC2_I2C_DEVICE_ADDRESS 0x50
+
 //typedef enum  alignas(1) _EDIDBitDepth {
 //	Undefined = (BYTE)0, Bpp6 = (BYTE)1, Bpp8 = (BYTE)2, Bpp10 = (BYTE)3, Bpp12 = (BYTE)4, Bpp14 = (BYTE)5, Bpp16 = (BYTE)6, Reserved = (BYTE)7,
 //} EDIDBitDepth;

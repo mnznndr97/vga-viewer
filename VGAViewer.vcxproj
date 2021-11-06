@@ -42,12 +42,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <NMakePreprocessorDefinitions>USE_HAL_DRIVER;STM32F407xx;__CC_ARM;CUSTOMASSERT;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
-    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
     <NMakePreprocessorDefinitions>USE_HAL_DRIVER;STM32F407xx;__CC_ARM;CUSTOMASSERT;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
-    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>
@@ -63,10 +63,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="core\src\assertion.c" />
+    <ClCompile Include="Core\Src\cmsis_extensions.c" />
     <ClCompile Include="core\src\crc7.c" />
+    <ClCompile Include="Core\Src\freertos.c" />
+    <ClCompile Include="Core\Src\hal_extensions.c" />
     <ClCompile Include="core\src\main.c" />
+    <ClCompile Include="Core\Src\ram.c" />
     <ClCompile Include="core\src\screen\screen.c" />
     <ClCompile Include="core\src\stm32f4xx_hal_msp.c" />
+    <ClCompile Include="Core\Src\stm32f4xx_hal_timebase_tim.c" />
     <ClCompile Include="core\src\stm32f4xx_it.c" />
     <ClCompile Include="core\src\syscalls.c" />
     <ClCompile Include="core\src\sysmem.c" />
@@ -94,11 +99,25 @@
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_tim_ex.c" />
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_uart.c" />
     <ClCompile Include="Makefile" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os2.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\croutine.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\event_groups.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\list.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F\port.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\portable\MemMang\heap_4.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\queue.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\stream_buffer.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\tasks.c" />
+    <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\timers.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\inc\assertion.h" />
+    <ClInclude Include="Core\Inc\cmsis_extensions.h" />
     <ClInclude Include="core\inc\crc7.h" />
+    <ClInclude Include="Core\Inc\FreeRTOSConfig.h" />
+    <ClInclude Include="Core\Inc\hal_extensions.h" />
     <ClInclude Include="core\inc\main.h" />
+    <ClInclude Include="Core\Inc\ram.h" />
     <ClInclude Include="core\inc\screen\screen.h" />
     <ClInclude Include="core\inc\screen\screenbuffer.h" />
     <ClInclude Include="core\inc\stm32f4xx_hal_conf.h" />
@@ -153,6 +172,29 @@
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_tim.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_tim_ex.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_uart.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os2.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\freertos_mpool.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\freertos_os2.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\atomic.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\croutine.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\deprecated_definitions.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\event_groups.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\FreeRTOS.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\list.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\message_buffer.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\mpu_prototypes.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\mpu_wrappers.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\portable.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\projdefs.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\queue.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\semphr.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\StackMacros.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\stack_macros.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\stream_buffer.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\task.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\include\timers.h" />
+    <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F\portmacro.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="debug\VGAViewer.bin" />

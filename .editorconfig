@@ -3,7 +3,7 @@
 # All files
 [*]
 indent_style = space
-vc_generate_documentation_comments = doxygen_slash_star
+vc_generate_documentation_comments = doxygen_triple_slash
 
 # Xml files
 [*.xml]
