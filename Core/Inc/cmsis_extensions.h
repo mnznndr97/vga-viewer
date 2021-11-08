@@ -21,6 +21,8 @@ enum osExErrorFlags {
 /// The documentation () states that an error has the MSB set
 #define osExResultIsFlagsErrorCode(value) (((value) & osFlagsError) != 0)
 
+#define CHECK_OS_STATUS(result) if ((result) != osOK) { Error_Handler(); }
+
 osStatus_t osExDelayMs(uint32_t ms);
 
 void osExEnforeStackProtection(osThreadId_t handle);
