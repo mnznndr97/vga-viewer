@@ -11,9 +11,9 @@
 extern void Error_Handler(void);
 
 void DebugAssert(bool condition) {
-#if CUSTOMASSERT
+#ifdef CUSTOMASSERT
         if(!condition) Error_Handler();
-    #else
+#else
 	assert(condition);
 #endif
 }

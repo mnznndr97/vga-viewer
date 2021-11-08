@@ -73,7 +73,7 @@ UART_HandleTypeDef huart4;
 
 /* Definitions for vgaConnectionTa */
 osThreadId_t vgaConnectionTaHandle;
-const osThreadAttr_t vgaConnectionTa_attributes = { .name = "vgaConnectionTa", .stack_size = 128 * 4, .priority = (osPriority_t) osPriorityNormal, };
+const osThreadAttr_t vgaConnectionTa_attributes = { .name = "vgaConnectionTa", .stack_size = 160 * 4, .priority = (osPriority_t) osPriorityNormal, };
 /* Definitions for _vgaEDIDRcvEvnt */
 osEventFlagsId_t _vgaEDIDRcvEvntHandle;
 const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = { .name = "_vgaEDIDRcvEvnt" };
@@ -103,6 +103,15 @@ static void HandleI2CError(I2C_HandleTypeDef *hi2c);
 /* USER CODE BEGIN 0 */
 
 int __io_putchar(int ch) {
+	// The __io_putchar migth in a "deep" position in the stack due to libs function calls
+	// (at least in Debug mode where inlining is not aggressive)
+	// To be absolutely secure, let's check that at least in this level we have enough space in the stack
+	// This can be done only when the kernel in running
+	osKernelState_t state = osKernelGetState();
+	if (state == osKernelRunning) {
+		osExEnforeStackProtection(NULL);
+	}
+
 	// This call is blocking with infinite timeout so in general we should not have errors
 	HAL_StatusTypeDef result = HAL_UART_Transmit(&huart4, (unsigned char*) &ch, 1, HAL_MAX_DELAY);
 	if (result != HAL_OK) {
@@ -135,8 +144,8 @@ void OnDMACplt(DMA_HandleTypeDef *dma) {
 }
 
 void HandleI2CError(I2C_HandleTypeDef *hi2c) {
-    // NB: HAL driver (in theory handles correctly the abort of the current transfer when an error occurs
-    // We have to do nothing
+	// NB: HAL driver (in theory handles correctly the abort of the current transfer when an error occurs
+	// We have to do nothing
 
 	printf("\033[1;33m");
 	UInt32 errorCode = hi2c->ErrorCode;
@@ -191,7 +200,6 @@ void TIM1_CC_IRQHandler(void) {
 }
 
 void TIM3_IRQHandler() {
-
 	return;
 	//uint32_t timStatus = TIM3->SR;
 	//uint32_t isVideoStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC2);
@@ -218,6 +226,13 @@ void TIM3_IRQHandler() {
 }
 
 void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	// The vgaConnectionTaHandle is the only task that should enable this interrupt
+	// If the task stack overflows, there is the risk that some OS structures (_vgaEDIDRcvEvntHandle)
+	// can be corruptes so better add a check to lower the possibility that this event occurs
+	// NB: StackOverflow can happen during another IRQ_Handler. Here we are just "asserting" that everything ok
+	// otherwhise osEventFlagsSet may fail
+	osExEnforeStackProtection(vgaConnectionTaHandle);
+
 	// Not too much to do here. I2C transfer is now completed and we can set our event
 	UInt32 result = osEventFlagsSet(_vgaEDIDRcvEvntHandle, I2CVGA_EDID_RECEIVED);
 	if (osExResultIsFlagsErrorCode(result)) {
@@ -230,6 +245,13 @@ void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
+	// The vgaConnectionTaHandle is the only task that should enable this interrupt
+	// If the task stack overflows, there is the risk that some OS structures (_vgaEDIDRcvEvntHandle)
+	// can be corruptes so better add a check to lower the possibility that this event occurs
+	// NB: StackOverflow can happen during another IRQ_Handler. Here we are just "asserting" that everything ok
+	// otherwhise osEventFlagsSet may fail
+	osExEnforeStackProtection(vgaConnectionTaHandle);
+
 	// Not too much to do here. I2C transfer resulted in an error
 	// We simply signal the event. The VGA connection task will handle the error
 	// that should have been writtien in hi2c->ErrorCode
@@ -848,9 +870,14 @@ void ConnecToVGATask(void *argument) {
 			osExDelayMs(10 * 1000); // 10 sec delay
 		}
 
+		// We have to clear the Error code since in the I2C_Master_Receive the field is cleared AFTER the BUSY_FLAG wait loop,
+		// otherwhise we will OR a possible previous error with the HAL_I2C_ERROR_TIMEOUT if the bus is still busy
+		hi2c2.ErrorCode = HAL_I2C_ERROR_NONE;
+		// Assert: I2C handle should be ready with no error set
+		DebugAssert(hi2c2.ErrorCode == 0 && hi2c2.State == HAL_I2C_STATE_READY);
 		// First stem: launch the Rcv command with the intterupts enabled
 		HAL_StatusTypeDef halStatus = HAL_I2C_Master_Receive_IT(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, (uint8_t*) &_vgaEDID, sizeof(EDID));
-		if (halStatus == HAL_ERROR && hi2c2.ErrorCode == HAL_I2C_ERROR_TIMEOUT) {
+		if (halStatus == HAL_ERROR && hi2c2.ErrorCode & HAL_I2C_ERROR_TIMEOUT) {
 			// If the HAL_ERROR is flagged with the timeout, the bus is busy. We can't do anything.
 			printf("Unable to initialize VGA I2C transmission. Nothing connected (bus busy)\r\n");
 			// We simply repeat with some waiting
@@ -876,6 +903,14 @@ void ConnecToVGATask(void *argument) {
 			continue;
 		}
 
+		if (!EDIDIsChecksumValid(&_vgaEDID)) {
+			printf("\033[1;33mVGA EDID checksum is not valid. Cannot connect\033[0m\r\n");
+			continue;
+		}
+
+		printf("\033[1;92mVGA connected\033[0m\r\n");
+		EDIDDumpStructure(&_vgaEDID);
+
 		while (1) {
 
 		}
@@ -886,7 +921,7 @@ void ConnecToVGATask(void *argument) {
 
 /**
  * @brief  Period elapsed callback in non blocking mode
- * @note   This function is called  when TIM6 interrupt took place, inside
+ * @note   This function is called  when TIM7 interrupt took place, inside
  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
  * a global variable "uwTick" used as application time base.
  * @param  htim : TIM handle
@@ -896,7 +931,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	/* USER CODE BEGIN Callback 0 */
 
 	/* USER CODE END Callback 0 */
-	if (htim->Instance == TIM6) {
+	if (htim->Instance == TIM7) {
 		HAL_IncTick();
 	}
 	/* USER CODE BEGIN Callback 1 */
@@ -928,12 +963,12 @@ void Error_Handler(void) {
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t* file, uint32_t line)
+void assert_failed(uint8_t *file, uint32_t line)
 {
-    /* USER CODE BEGIN 6 */
-          /* User can add his own implementation to report the file name and line number,
-           ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-           /* USER CODE END 6 */
+  /* USER CODE BEGIN 6 */
+              /* User can add his own implementation to report the file name and line number,
+               ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 
