@@ -8,8 +8,10 @@
 #ifndef INC_VGA_VGASCREENBUFFER_H_
 #define INC_VGA_VGASCREENBUFFER_H_
 
-#include <screen/screenbuffer.h>
 #include <typedefs.h>
+#include <screen/screenbuffer.h>
+#include <stm32f4xx_hal.h>
+
 
  // ##### Internal forward declarations #####
 
@@ -31,6 +33,7 @@ typedef enum _VGAError {
      * @brief A parameter passed to a function is not valid
     */
     VGAErrorInvalidParameter,
+    VGAErrorInvalidState,
 
     VGAErrorNotSupported,
 } VGAError;
@@ -69,6 +72,11 @@ typedef struct _VGAVisualizationInfo {
     BYTE Scaling;
     Bpp BitsPerPixel;
     BOOL DoubleBuffered;
+
+    TIM_HandleTypeDef* mainTimer;
+    TIM_HandleTypeDef* hSyncTimer;
+    TIM_HandleTypeDef* vSyncTimer;
+    DMA_HandleTypeDef* lineDMA;
 } VGAVisualizationInfo;
 
 // ##### Public fileds declarations #####
@@ -77,13 +85,19 @@ typedef struct _VGAVisualizationInfo {
 extern VideoFrameInfo VideoFrame800x600at60Hz;
 // ##### Public functions declarations #####
 
-/**
- * @brief Creates a new ScreenBuffer from VGA initialization parameters
- * @param visualizationInfo VGA output parameters
- * @param screenBuffer Filled ScreenBuffer struct with the relative data
- * @return VGA status
-*/
-VGAError VGACreateScreenBuffer(const VGAVisualizationInfo* visualizationInfo, VGAScreenBuffer* screenBuffer);
+/// Creates a new ScreenBuffer from VGA initialization parameters and registers it as a working buffer
+/// @param visualizationInfo VGA output parameters
+/// @param screenBuffer Filled ScreenBuffer struct with the relative data
+/// @return VGA status
+VGAError VGACreateScreenBuffer(const VGAVisualizationInfo* visualizationInfo, ScreenBuffer** screenBuffer);
+
+/// Dumps the active buffer timers frequencies
+VGAError VGADumpTimersFrequencies();
+
+VGAError VGAStartOutput();
+VGAError VGASuspendOutput();
+VGAError VGAResumeOutput();
+VGAError VGAStopOutput();
 
 
 /**

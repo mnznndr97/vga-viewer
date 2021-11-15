@@ -64,6 +64,7 @@
   <ItemGroup>
     <ClCompile Include="core\src\assertion.c" />
     <ClCompile Include="Core\Src\cmsis_extensions.c" />
+    <ClCompile Include="Core\Src\console.c" />
     <ClCompile Include="core\src\crc7.c" />
     <ClCompile Include="Core\Src\freertos.c" />
     <ClCompile Include="Core\Src\hal_extensions.c" />
@@ -113,6 +114,7 @@
   <ItemGroup>
     <ClInclude Include="core\inc\assertion.h" />
     <ClInclude Include="Core\Inc\cmsis_extensions.h" />
+    <ClInclude Include="Core\Inc\console.h" />
     <ClInclude Include="core\inc\crc7.h" />
     <ClInclude Include="Core\Inc\FreeRTOSConfig.h" />
     <ClInclude Include="Core\Inc\hal_extensions.h" />

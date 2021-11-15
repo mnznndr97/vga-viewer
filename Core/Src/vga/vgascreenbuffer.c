@@ -7,29 +7,27 @@
 
 #include <vga/vgascreenbuffer.h>
 #include <assertion.h>
-#include <stm32f4xx_hal.h>
 #include <ram.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <console.h>
 
 extern void Error_Handler();
 
 // ##### Private forward declarations #####
 
-static VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, const VideoFrameInfo *finalTimings, VGAScreenBuffer *buffer);
+static VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *buffer);
 static VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameInfo *finalTimes);
-static VGAError SetupMainClockTree(float pixelMHzFreq);
 static VGAError ValidateTiming(const Timing *timing);
 static void ScaleTiming(const Timing *timing, BYTE scale, Timing *dest);
+static VGAError SetupMainClockTree(float pixelMHzFreq);
+static VGAError SetupTimers(BYTE resScaling, VGAScreenBuffer *screenBuffer);
 
 // ##### Private types declarations #####
 typedef enum _VGAState {
-	/**
-	 * @brief VGA is in the porch/sync state
-	 *
-	 * @remarks In this stage, the VGA monitor is using the RBG channels as black level calibration so our
-	 * signals should be blanked out
-	 * Reference: https://electronics.stackexchange.com/a/209494
-	 */
-	VGAStateVSync,
+	VGAStateStopped, VGAStateSuspended,
+
+	//VGAStateVSync,
 
 	/// VGA is displaying some active line
 	///
@@ -42,31 +40,184 @@ struct _VGAScreenBuffer {
 	ScreenBuffer base;
 
 	BYTE *BufferPtr;
-	volatile void *currentLineAddress;
+	UInt16 currentLineOffset;
+	UInt16 linePixels;
+	UInt32 bufferSize;
 	VideoFrameInfo VideoFrameTiming;
 	VGAState state;
+
+	BYTE linePrescaler;
+
+	/// @brief VGA is in the vertical porch/sync state
+	///
+	/// @remarks In this stage, the VGA monitor is using the RBG channels as black level calibration so our
+	/// signals should be blanked out
+	/// Reference: https://electronics.stackexchange.com/a/209494
+	BYTE vSyncing;
+
+	TIM_HandleTypeDef *mainPixelClockTimer;
+	TIM_HandleTypeDef *hSyncClockTimer;
+	TIM_HandleTypeDef *vSyncClockTimer;
+
+	DMA_TypeDef *screenLineDMAController;
+	DMA_Stream_TypeDef *screenLineDMAStream;
 };
 
 VideoFrameInfo VideoFrame800x600at60Hz = { 40, { 800, 40, 128, 88 }, { 600, 1, 4, 23 } };
 
+static VGAScreenBuffer *volatile _activeScreenBuffer = NULL;
+
 // ##### Private Function definitions #####
 
-VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, const VideoFrameInfo *finalTimings, VGAScreenBuffer *screenBuffer) {
+void TIM1_CC_IRQHandler(void) {
+	// IRQ normal bit stuff handling
+	// Not much to optimize here
+	UInt32 timStatus = TIM1->SR;
+	UInt32 isLineStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC3);
+	UInt32 isLineEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC4);
+	CLEAR_BIT(TIM1->SR, isLineStartIRQ | isLineEndIRQ);
+
+	VGAScreenBuffer *screenBuffer = _activeScreenBuffer;
+	if (screenBuffer == NULL) {
+		// Main timer may have been stopped just when the IRQ was pending
+		// We simply ignore the IRQ
+		return;
+	}
+
+	VGAState currentState = screenBuffer->state;
+	if (currentState != VGAStateActive) {
+		// Video is not active. Exiting
+		return;
+	}
+
+	if (screenBuffer->vSyncing) {
+		//ITM_SendChar('V');
+
+		DMA_Stream_TypeDef *dmaStream = screenBuffer->screenLineDMAStream;
+		UInt32 dmaEnabled = READ_BIT(dmaStream->CR, DMA_SxCR_EN);
+		UInt32 dataStilltoRead = dmaStream->NDTR;
+		if (dmaEnabled != 0 || dataStilltoRead != screenBuffer->linePixels) {
+			// DMA should not be running
+			Error_Handler();
+		}
+
+		screenBuffer->currentLineOffset = 0;
+		dmaStream->M0AR = ((UInt32) screenBuffer->BufferPtr);
+	} else if (isLineStartIRQ != 0) {
+		SET_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
+		ITM_SendChar('S');
+	} else {
+		//ITM_SendChar('E');
+		// We are in the porch section, we have a little more time to do all of our stuff
+		/* First thing that we have to do: check that the DMA has completed the transfer */
+		// If the DMA is not completed, we have done something wrong with the timing
+		// We can't simply wait too much otherwhise pixels will be drawn in the blanking area of the HSYNC
+		// So we make sure that the "data to transfer" register is zero (we don't care if the stream is still enabled)
+		DMA_Stream_TypeDef *dmaStream = screenBuffer->screenLineDMAStream;
+		UInt32 dmaEnabled = READ_BIT(dmaStream->CR, DMA_SxCR_EN);
+		UInt32 dataStilltoRead = dmaStream->NDTR;
+		if (dmaEnabled != 0 && dataStilltoRead > 0) {
+			// DMA still running, something is wrong
+			Error_Handler();
+		} else if (dmaEnabled != 0) {
+			// We have to wait that DMA_SxCR_EN is effectively set to 0
+			// so we can setup our next transfer
+			while (READ_BIT(dmaStream->CR, DMA_SxCR_EN) != 0)
+				;
+		}
+
+		// We can stop the trigger DMA request of the timer. It will be resumed
+		// at the start of the visible portion of the area
+		__HAL_TIM_DISABLE_DMA(screenBuffer->hSyncClockTimer, TIM_DMA_TRIGGER);
+
+		/* Check for error condition */
+		UInt32 lisr = DMA2->LISR;
+		if (READ_BIT(lisr, DMA_LISR_DMEIF0)) {
+			// Stream direct mode error
+			Error_Handler();
+		}
+		if (READ_BIT(lisr, DMA_LISR_TEIF0)) {
+			// Stream transfer mode error
+			Error_Handler();
+		}
+
+		/*if (READ_BIT(lisr, DMA_LISR_FEIF0)) {
+		 // FIFO transfer mode error
+		 Error_Handler();
+		 }*/
+
+		/* Preparation of a new DMA request */
+		// We clear all the Complete|Half Trasfer completed flags
+		SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LISR_FEIF0);
+
+		// Line pixels fix
+		if (++screenBuffer->linePrescaler == 2) {
+			screenBuffer->currentLineOffset += screenBuffer->linePixels;
+		}
+
+		// Data items to transfer are always the lines pixels
+		// In Mem2Per mode the "items" width are relative to the width of the "peripheral" bus (RM0090 - Section 10.3.10)
+		dmaStream->NDTR = screenBuffer->linePixels;
+		// Source memory address is simply buffer start + current line offset
+		dmaStream->M0AR = ((UInt32) screenBuffer->BufferPtr) + ((UInt32) screenBuffer->currentLineOffset);
+
+		if (screenBuffer->currentLineOffset < screenBuffer->bufferSize) {
+			// If the buffer is within the limits, we enable the dma stream
+			// This will only preload the data in the FIFO (at least in Mem2Per mode) [AN4031- Section 2.2.2]
+			SET_BIT(dmaStream->CR, DMA_SxCR_EN);
+		} else {
+			dmaStream->NDTR = 0;
+		}
+
+	}
+}
+
+void TIM3_IRQHandler() {
+	uint32_t timStatus = TIM3->SR;
+	uint32_t isVisibleFrameStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC2);
+	uint32_t isVisibleFrameEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC3);
+
+	if (isVisibleFrameStartIRQ == 0 && isVisibleFrameEndIRQ == 0) {
+		// We are handling an interrupt that should not be enabled
+		Error_Handler();
+	}
+
+	CLEAR_BIT(TIM3->SR, isVisibleFrameStartIRQ | isVisibleFrameEndIRQ);
+
+	// We copy the volatile pointer locally. This may be useless in our "single threaded" event but it can be
+	// cached or optimized in a register
+	VGAScreenBuffer *screenBuffer = _activeScreenBuffer;
+	if (screenBuffer == NULL) {
+		// Main timer may have been stopped just when the IRQ was pending
+		// We simply ignore the IRQ
+		return;
+	}
+
+	// Independently of the state, we set the vSyncing flag
+	screenBuffer->vSyncing = isVisibleFrameEndIRQ != 0;
+}
+
+VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *screenBuffer) {
+	const VideoFrameInfo *finalTimings = &screenBuffer->VideoFrameTiming;
 	// Let's cache our info data in local variables
 	Bpp localBpp = info->BitsPerPixel;
 	// TODO: If this remains a WORD, we can optimize the blanking writing directly a 4 bytes 0x0
 	UInt16 lineVisiblePixels = finalTimings->ScanlineTiming.VisibleArea;
 	UInt16 lineBorderPixels = 4;
 
+	// 1) We initialize the framebuffer using the line visible portion + some "safety border" that will remain blanked
 	size_t totalLinePixels = lineVisiblePixels + lineBorderPixels;
 	size_t framebufferSize = totalLinePixels;
+
+	// Here we setup the screen dimension in the VGAScreenBuffer
+	screenBuffer->base.screenSize.width = lineVisiblePixels;
+	screenBuffer->base.screenSize.height = totalLinePixels;
+	screenBuffer->linePixels = totalLinePixels;
 
 	size_t frameLines = finalTimings->FrameTiming.VisibleArea;
 	if (info->DoubleBuffered)
 		frameLines *= 2;
 
-	// 1) We initialize the framebuffer using the line visible portion + some "safety border" that will remain blanked
-	framebufferSize = framebufferSize * finalTimings->FrameTiming.VisibleArea;
 	// 2) We multiply by the number of lines (visible area of the frame)
 	framebufferSize *= frameLines;
 
@@ -74,6 +225,10 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, const VideoFrameI
 		// If we have one byte per pixels, let's reflect it on the buffer
 		framebufferSize *= 3;
 	}
+
+	screenBuffer->bufferSize = framebufferSize;
+	screenBuffer->linePrescaler = 0;
+	screenBuffer->currentLineOffset = 0;
 
 	BYTE *buffer = (BYTE*) ralloc(framebufferSize);
 	if (buffer == NULL) {
@@ -201,7 +356,7 @@ VGAError SetupMainClockTree(float pixelMHzFreq) {
 	return VGAErrorNone;
 }
 
-static VGAError ValidateTiming(const Timing *timing) {
+VGAError ValidateTiming(const Timing *timing) {
 	DebugAssert(timing);
 
 	if (timing->VisibleArea <= 0 || timing->FrontPorch <= 0 || timing->SyncPulse <= 0 || timing->BackPorch <= 0) {
@@ -217,11 +372,79 @@ static VGAError ValidateTiming(const Timing *timing) {
 	return VGAErrorNone;
 }
 
+VGAError SetupTimers(BYTE resScaling, VGAScreenBuffer *screenBuffer) {
+	UInt32 timersOnAPB1Freq = HAL_RCC_GetPCLK1Freq() * 2;
+	UInt32 pixelFreq = screenBuffer->VideoFrameTiming.PixelFrequencyMHz * 1000000;
+	UInt32 prescaler = timersOnAPB1Freq / pixelFreq;
+	if (prescaler == 0 || prescaler > UINT8_MAX) {
+		return VGAErrorInvalidParameter;
+	}
+
+	TIM_TypeDef *mainTimHandle = screenBuffer->mainPixelClockTimer->Instance;
+	mainTimHandle->ARR = prescaler - 1;
+	mainTimHandle->CNT = 0;
+
+	const Timing *hTiming = &screenBuffer->VideoFrameTiming.ScanlineTiming;
+	const Timing *vTiming = &screenBuffer->VideoFrameTiming.FrameTiming;
+	// Due to the PWM mode of our timers, the line starts with a back porch
+
+	// Due to the PWM mode of our timers, the line/frame starts with a back porch
+	// The timers will be high for BPorch + Visible + FPorch time and go low for the Syn time
+	int wholeLine = VGATimingGetSum(hTiming);
+	int wholeFrame = VGATimingGetSum(vTiming);
+
+	/* *** Horizontal sync setup *** */
+
+// We set the clock division by clearing the bits and setting the new ones
+	TIM_TypeDef *hSyncTimer = screenBuffer->hSyncClockTimer->Instance;
+	hSyncTimer->ARR = wholeLine - 1;
+	hSyncTimer->CNT = 0;
+
+	hSyncTimer->CCR1 = wholeLine - hTiming->SyncPulse; // Main HSYNC signal
+	hSyncTimer->CCR2 = hTiming->BackPorch; // Black porch VSYNC trigger
+	hSyncTimer->CCR3 = hTiming->BackPorch - 15; // DMA start (video line render start)
+	hSyncTimer->CCR4 = hTiming->BackPorch + hTiming->VisibleArea + 8; // DMA end (video line render end)
+
+	DebugAssert(hSyncTimer->CCR1 >= 0);
+	DebugAssert(hSyncTimer->CCR2 >= 0 && hSyncTimer->CCR2 < hSyncTimer->CCR1);
+	DebugAssert(hSyncTimer->CCR3 >= 0 && hSyncTimer->CCR3 < hSyncTimer->CCR1);
+	DebugAssert(hSyncTimer->CCR4 >= 0 && hSyncTimer->CCR4 >= hSyncTimer->CCR3 && hSyncTimer->CCR4 < hSyncTimer->CCR1);
+
+	/* *** Vertical sync setup *** */
+// HSync will trigger the VSync at each line using the correct vga timing, so we have to prescale the
+// timer at the input
+	TIM_TypeDef *vSyncTimer = screenBuffer->vSyncClockTimer->Instance;
+	vSyncTimer->ARR = wholeFrame - 1;
+	vSyncTimer->CNT = 0;
+	vSyncTimer->PSC = resScaling - 1;
+
+	vSyncTimer->CCR1 = wholeFrame - vTiming->SyncPulse;
+	vSyncTimer->CCR2 = vTiming->BackPorch;				// VideoStart signal
+	vSyncTimer->CCR3 = vTiming->BackPorch + vTiming->VisibleArea; // VideoEnd signal
+
+	DebugAssert(vSyncTimer->CCR1 >= 0);
+	DebugAssert(vSyncTimer->CCR2 >= 0 && vSyncTimer->CCR2 < vSyncTimer->CCR1);
+	DebugAssert(vSyncTimer->CCR3 >= 0 && vSyncTimer->CCR3 < vSyncTimer->CCR1 && vSyncTimer->CCR3 > vSyncTimer->CCR2);
+
+	return VGAErrorNone;
+}
+
 // ##### Public Function definitions #####
 
-VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, VGAScreenBuffer *screenBuffer) {
+VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, ScreenBuffer **screenBuffer) {
 	if (!visualizationInfo || !screenBuffer) {
 		return VGAErrorInvalidParameter;
+	}
+
+	if (!visualizationInfo->mainTimer || !visualizationInfo->hSyncTimer || !visualizationInfo->vSyncTimer) {
+		return VGAErrorInvalidParameter;
+	}
+
+	VGAScreenBuffer *vgaScreenBuffer = (VGAScreenBuffer*) malloc(sizeof(VGAScreenBuffer));
+	*screenBuffer = (ScreenBuffer*) vgaScreenBuffer;
+	if (*screenBuffer == NULL) {
+		// Cannot allocate memory for ScreenBuffer
+		return VGAErrorOutOfMemory;
 	}
 
 	if (visualizationInfo->FrameSignals.PixelFrequencyMHz <= 0.0f) {
@@ -242,15 +465,39 @@ VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, VG
 		return result;
 	}
 
+	vgaScreenBuffer->state = VGAStateStopped;
+	vgaScreenBuffer->vSyncing = 0;
+	vgaScreenBuffer->base.bitsPerPixel = visualizationInfo->BitsPerPixel;
+	vgaScreenBuffer->VideoFrameTiming = scaledVideoTimings;
+
 	// Before configuring clock, we try to allocate our buffer to see if there is enougth memory
-	if ((result = AllocateFrameBuffer(visualizationInfo, &scaledVideoTimings, screenBuffer)) != VGAErrorNone) {
+	if ((result = AllocateFrameBuffer(visualizationInfo, vgaScreenBuffer)) != VGAErrorNone) {
 		return result;
 	}
+
+	vgaScreenBuffer->mainPixelClockTimer = visualizationInfo->mainTimer;
+	vgaScreenBuffer->hSyncClockTimer = visualizationInfo->hSyncTimer;
+	vgaScreenBuffer->vSyncClockTimer = visualizationInfo->vSyncTimer;
+	vgaScreenBuffer->screenLineDMAController = DMA2;
+	vgaScreenBuffer->screenLineDMAStream = visualizationInfo->lineDMA->Instance;
 
 	/*if ((result = SetupMainClockTree(scaledVideoTimings.PixelFrequencyMHz)) != VGAErrorNone) {
 	 return result;
 	 }*/
 
+	if ((result = SetupTimers(visualizationInfo->Scaling, vgaScreenBuffer)) != VGAErrorNone) {
+		return result;
+	}
+
+	if (visualizationInfo->BitsPerPixel == Bpp3) {
+		// When using the 3 bpp visualization, we use the low 8 GPIOE pins to output our colors
+		// (3 bits for blue, 3 bits for green, 2 bits for red, in "little endian" order (Red -> [0, 1], Green -> [2, 4], Blu -> [5-7])
+		vgaScreenBuffer->screenLineDMAStream->PAR = (uint32_t) GPIOE;
+		vgaScreenBuffer->screenLineDMAStream->M0AR = (uint32_t) vgaScreenBuffer->BufferPtr;
+		vgaScreenBuffer->screenLineDMAStream->NDTR = (uint32_t) vgaScreenBuffer->linePixels;
+
+	}
+	_activeScreenBuffer = vgaScreenBuffer;
 	return VGAErrorNone;
 }
 
@@ -258,4 +505,142 @@ Int32 VGATimingGetSum(const Timing *timing) {
 	if (!timing)
 		return -1;
 	return timing->VisibleArea + timing->FrontPorch + timing->SyncPulse + timing->BackPorch;
+}
+
+VGAError VGADumpTimersFrequencies() {
+	VGAScreenBuffer *screenBuf = _activeScreenBuffer;
+	if (screenBuf == NULL) {
+		// VGA screen buffer not allocated and registered
+		return VGAErrorInvalidState;
+	}
+
+	UInt32 timersOnAPB1Freq = HAL_RCC_GetPCLK1Freq() * 2;
+	UInt32 timersOnAPB2Freq = HAL_RCC_GetPCLK2Freq() * 2;
+
+	// Let's print first the main timer frequency
+
+	printf("Main timer:\r\n");
+	printf("\tInput frequency (from APB1): ");
+	FormatFrequency(timersOnAPB1Freq);
+	printf("\r\n");
+
+	TIM_TypeDef *mainTim = screenBuf->mainPixelClockTimer->Instance;
+	float mainTimerFreq = timersOnAPB2Freq / (mainTim->PSC + 1.0f);
+
+	printf("\tPrescaled frequency: ");
+	FormatFrequency(mainTimerFreq);
+	printf("\r\n");
+
+	mainTimerFreq = timersOnAPB2Freq / (mainTim->ARR + 1.0f);
+	printf("\tEffetive frequency: ");
+	FormatFrequency(mainTimerFreq);
+	printf("\r\n");
+
+	// HSync timer info print
+	TIM_TypeDef *hSyncTim = screenBuf->hSyncClockTimer->Instance;
+	printf("HSync timer:\r\n");
+	printf("\tInput frequency (from trigger timer): ");
+	FormatFrequency(mainTimerFreq);
+	printf("\r\n");
+
+	float hSyncFreq = mainTimerFreq / (hSyncTim->ARR + 1.0f);
+	printf("\tSignal frequency: ");
+	FormatFrequency(hSyncFreq);
+	printf("\r\n");
+
+	// VSync timer info print
+	TIM_TypeDef *vSyncTim = screenBuf->vSyncClockTimer->Instance;
+	printf("VSync timer:\r\n");
+	printf("\tInput frequency (from trigger hsync): ");
+	FormatFrequency(hSyncFreq);
+	printf("\r\n");
+
+	float vSyncFreq = hSyncFreq / (vSyncTim->PSC + 1.0f);
+	printf("\tPrescaled frequency: ");
+	FormatFrequency(vSyncFreq);
+	printf("\r\n");
+
+	vSyncFreq = vSyncFreq / (vSyncTim->ARR + 1.0f);
+	printf("\tSignal frequency: ");
+	FormatFrequency(vSyncFreq);
+	printf("\r\n");
+}
+
+VGAError VGAStartOutput() {
+	VGAScreenBuffer *screenBuf = _activeScreenBuffer;
+	if (screenBuf == NULL) {
+		// VGA screen buffer not allocated and registered
+		return VGAErrorInvalidState;
+	}
+
+	if (screenBuf->state != VGAStateStopped) {
+		// VGA screen buffer not allocated and registered
+		return VGAErrorInvalidState;
+	}
+
+	// Everything should be ok here. Buffer is allocated and timers are hopefully setted correctly
+	// We can start our timers
+
+	// First we start the Hsync timer. The timer will not run until the main timer is started
+	// Main HSync signal. Does not require interrupt handling since it is feeded directly into the monitor
+	HAL_TIM_PWM_Start(screenBuf->hSyncClockTimer, TIM_CHANNEL_1);
+	// VSync trigger signal. Does not require interrupt handling since it is feeded directly into the slave timer
+	HAL_TIM_PWM_Start(screenBuf->hSyncClockTimer, TIM_CHANNEL_2);
+	// Visible line start + Visible line end interrupt must be enabled (in PWM in order to have a "loop" ov events each cycle)
+	HAL_TIM_PWM_Start_IT(screenBuf->hSyncClockTimer, TIM_CHANNEL_3);
+	HAL_TIM_PWM_Start_IT(screenBuf->hSyncClockTimer, TIM_CHANNEL_4);
+
+	// Then we start the Vsync timer. The timer will not run until the HSync timer is started (VSync is slave of HSYNC)
+	// Main VSync signal. Does not require interrupt handling since it is feeded directly into the monitor
+	HAL_TIM_PWM_Start(screenBuf->vSyncClockTimer, TIM_CHANNEL_1);
+	// Visible area start + Visible area end interrupt must be enabled (in PWM in order to have a "loop" ov events each cycle)
+	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_3);
+
+	SET_BIT(screenBuf->screenLineDMAStream->CR, DMA_SxCR_EN);
+
+	UInt32 thresholdSelected = READ_BIT(screenBuf->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
+	UInt32 fifoStatusToReach;
+
+	switch (thresholdSelected) {
+	case DMA_FIFO_THRESHOLD_1QUARTERFULL:
+		fifoStatusToReach = DMA_SxFCR_FS_0; // 1/4 <= Level < 1/2
+		break;
+	case DMA_FIFO_THRESHOLD_HALFFULL:
+		fifoStatusToReach = DMA_SxFCR_FS_1; // 1/2 <= Level < 3/4
+		break;
+	case DMA_FIFO_THRESHOLD_3QUARTERSFULL:
+		fifoStatusToReach = DMA_SxFCR_FS_1 | DMA_SxFCR_FS_0; // 3/4 <= Level < Full
+		break;
+	case DMA_FIFO_THRESHOLD_FULL:
+		fifoStatusToReach = DMA_SxFCR_FS_2 | DMA_SxFCR_FS_0; // Full
+		break;
+	default:
+		Error_Handler();
+		break;
+	}
+
+	while (READ_BIT(screenBuf->screenLineDMAStream->FCR, DMA_SxFCR_FS) != fifoStatusToReach) {
+
+	}
+
+	screenBuf->state = VGAStateActive;
+
+	// END STEP: we start the main timer. Ther main timer direclty feeds the Hsync so we don't need any
+	// output
+	// We also set activate
+	HAL_TIM_Base_Start(screenBuf->mainPixelClockTimer);
+	return VGAErrorNone;
+}
+
+VGAError VGASuspendOutput() {
+
+}
+
+VGAError VGAResumeOutput() {
+
+}
+
+VGAError VGAStopOutput() {
+
 }
