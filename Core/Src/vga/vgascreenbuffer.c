@@ -18,6 +18,8 @@ extern void Error_Handler();
 
 static VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *buffer);
 static VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameInfo *finalTimes);
+static void DisableLineDMA(DMA_Stream_TypeDef *dmaStream);
+void HandleDMALineEnd(VGAScreenBuffer *screenBuffer);
 static VGAError ValidateTiming(const Timing *timing);
 static void ScaleTiming(const Timing *timing, BYTE scale, Timing *dest);
 static VGAError SetupMainClockTree(float pixelMHzFreq);
@@ -40,13 +42,14 @@ struct _VGAScreenBuffer {
 	ScreenBuffer base;
 
 	BYTE *BufferPtr;
-	UInt16 currentLineOffset;
+	UInt32 currentLineOffset;
 	UInt16 linePixels;
 	UInt32 bufferSize;
 	VideoFrameInfo VideoFrameTiming;
 	VGAState state;
 
-	BYTE linePrescaler;
+	SBYTE linePrescaler;
+	UInt16 lines;
 
 	/// @brief VGA is in the vertical porch/sync state
 	///
@@ -61,6 +64,11 @@ struct _VGAScreenBuffer {
 
 	DMA_TypeDef *screenLineDMAController;
 	DMA_Stream_TypeDef *screenLineDMAStream;
+
+	/// Cache for clear flags that need to be set to the DMA
+	/// \remarks The flags are always the same depending on the stream so we can cache
+	/// the value to avoid a calculation each time
+	UInt32 dmaClearFlags;
 };
 
 VideoFrameInfo VideoFrame800x600at60Hz = { 40, { 800, 40, 128, 88 }, { 600, 1, 4, 23 } };
@@ -77,6 +85,7 @@ void TIM1_CC_IRQHandler(void) {
 	UInt32 isLineEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC4);
 	CLEAR_BIT(TIM1->SR, isLineStartIRQ | isLineEndIRQ);
 
+	++_activeScreenBuffer->lines;
 	VGAScreenBuffer *screenBuffer = _activeScreenBuffer;
 	if (screenBuffer == NULL) {
 		// Main timer may have been stopped just when the IRQ was pending
@@ -91,84 +100,38 @@ void TIM1_CC_IRQHandler(void) {
 	}
 
 	if (screenBuffer->vSyncing) {
-		//ITM_SendChar('V');
+		DebugWriteChar('V');
 
 		DMA_Stream_TypeDef *dmaStream = screenBuffer->screenLineDMAStream;
-		UInt32 dmaEnabled = READ_BIT(dmaStream->CR, DMA_SxCR_EN);
-		UInt32 dataStilltoRead = dmaStream->NDTR;
-		if (dmaEnabled != 0 || dataStilltoRead != screenBuffer->linePixels) {
-			// DMA should not be running
-			Error_Handler();
-		}
+		if (dmaStream->M0AR != (UInt32) screenBuffer->BufferPtr) {
+			DebugWriteChar('v');
+			// DMA should not be running in our ideal world. But as we already mentioned, the BusMatrix contentions can
+			// introduce some latency
+			// So what to do in the vSyncing portion of the frame?
 
-		screenBuffer->currentLineOffset = 0;
-		dmaStream->M0AR = ((UInt32) screenBuffer->BufferPtr);
-	} else if (isLineStartIRQ != 0) {
-		SET_BIT(TIM1->DIER, TIM_DMA_TRIGGER);
-		ITM_SendChar('S');
-	} else {
-		//ITM_SendChar('E');
-		// We are in the porch section, we have a little more time to do all of our stuff
-		/* First thing that we have to do: check that the DMA has completed the transfer */
-		// If the DMA is not completed, we have done something wrong with the timing
-		// We can't simply wait too much otherwhise pixels will be drawn in the blanking area of the HSYNC
-		// So we make sure that the "data to transfer" register is zero (we don't care if the stream is still enabled)
-		DMA_Stream_TypeDef *dmaStream = screenBuffer->screenLineDMAStream;
-		UInt32 dmaEnabled = READ_BIT(dmaStream->CR, DMA_SxCR_EN);
-		UInt32 dataStilltoRead = dmaStream->NDTR;
-		if (dmaEnabled != 0 && dataStilltoRead > 0) {
-			// DMA still running, something is wrong
-			Error_Handler();
-		} else if (dmaEnabled != 0) {
-			// We have to wait that DMA_SxCR_EN is effectively set to 0
-			// so we can setup our next transfer
-			while (READ_BIT(dmaStream->CR, DMA_SxCR_EN) != 0)
-				;
-		}
+			// We have to prepare the DMA for the next line, that means enabling the DMA on the buffer start address
+			// Before we ensure that the DMA is disable toghether with the timer trigger
 
-		// We can stop the trigger DMA request of the timer. It will be resumed
-		// at the start of the visible portion of the area
-		__HAL_TIM_DISABLE_DMA(screenBuffer->hSyncClockTimer, TIM_DMA_TRIGGER);
+			CLEAR_BIT(screenBuffer->hSyncClockTimer->Instance->DIER, TIM_DMA_TRIGGER);
+			DisableLineDMA(dmaStream);
 
-		/* Check for error condition */
-		UInt32 lisr = DMA2->LISR;
-		if (READ_BIT(lisr, DMA_LISR_DMEIF0)) {
-			// Stream direct mode error
-			Error_Handler();
-		}
-		if (READ_BIT(lisr, DMA_LISR_TEIF0)) {
-			// Stream transfer mode error
-			Error_Handler();
-		}
-
-		/*if (READ_BIT(lisr, DMA_LISR_FEIF0)) {
-		 // FIFO transfer mode error
-		 Error_Handler();
-		 }*/
-
-		/* Preparation of a new DMA request */
-		// We clear all the Complete|Half Trasfer completed flags
-		SET_BIT(DMA2->LIFCR, DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LISR_FEIF0);
-
-		// Line pixels fix
-		if (++screenBuffer->linePrescaler == 2) {
-			screenBuffer->currentLineOffset += screenBuffer->linePixels;
-		}
-
-		// Data items to transfer are always the lines pixels
-		// In Mem2Per mode the "items" width are relative to the width of the "peripheral" bus (RM0090 - Section 10.3.10)
-		dmaStream->NDTR = screenBuffer->linePixels;
-		// Source memory address is simply buffer start + current line offset
-		dmaStream->M0AR = ((UInt32) screenBuffer->BufferPtr) + ((UInt32) screenBuffer->currentLineOffset);
-
-		if (screenBuffer->currentLineOffset < screenBuffer->bufferSize) {
-			// If the buffer is within the limits, we enable the dma stream
-			// This will only preload the data in the FIFO (at least in Mem2Per mode) [AN4031- Section 2.2.2]
+			screenBuffer->linePrescaler = -1;
+			screenBuffer->currentLineOffset = 0;
+			dmaStream->M0AR = ((UInt32) screenBuffer->BufferPtr);
+			dmaStream->NDTR = (UInt32) screenBuffer->linePixels;
 			SET_BIT(dmaStream->CR, DMA_SxCR_EN);
-		} else {
-			dmaStream->NDTR = 0;
 		}
 
+	} else if (isLineStartIRQ != 0) {
+		// The line start IRQ HAVE TO be the fastest one -> When we are in the porch section (line or frame) we have more
+		// "relaxed" time restriction
+		// So we must do only one thing. Start the DMA. Everything else must be done in another time
+		SET_BIT(screenBuffer->hSyncClockTimer->Instance->DIER, TIM_DMA_TRIGGER);
+
+		// After the DMA start, we can send a little char to the ITM to let the programmer know what is happening
+		DebugWriteChar('S');
+	} else {
+		HandleDMALineEnd(screenBuffer);
 	}
 }
 
@@ -194,7 +157,102 @@ void TIM3_IRQHandler() {
 	}
 
 	// Independently of the state, we set the vSyncing flag
-	screenBuffer->vSyncing = isVisibleFrameEndIRQ != 0;
+	BYTE isVSyncing = isVisibleFrameEndIRQ != 0;
+
+	if (!isVSyncing) {
+		screenBuffer->lines = 0;
+	}
+	screenBuffer->vSyncing = isVSyncing;
+	DebugWriteChar('v' + isVSyncing);
+}
+
+void HandleDMALineEnd(VGAScreenBuffer *screenBuffer) {
+	// We are in the porch section, we have a little more time to do all of our stuff
+	/* First thing that we have to do: check that the DMA has completed the transfer */
+	// The ideal should check if the DMA is completed, otherwhise we have done something wrong with the timing and "raise" and error
+	// There is a little problem though. Even if the DMA stream has the highest priority, it still needs to cross the bus matrix
+	// (in case of GPIO output) since the GPIO are directly connected to the AHB1 (we cannot take advantage of the AHBx-APBx direct path).
+	// Even if the CortexM is accessing only CCMRAM memory and there are no other "AHB/SRAM" interactions with the bus matrix, as stated in a line
+	// of the "BusMatrix arbitration ..." paragraph of AN4031 [Section 2.1.3]:
+	/*      "The CPU locks the AHB bus to keep ownership and reduces latency during multiple
+	 load / store operations and interrupts entry. This enhances firmware responsiveness but it
+	 can result in delays on the DMA transaction"
+	 */
+
+	// This means that all our "MUST HAVE" interrupts (HSYNC/VSYNC timers, SysTick and Clock) introduce little delay in the DMA
+	// (maybe just one sample delay)
+	// Moreover, when calling some scheduling-related function of free-rtos, a PendSV interrupt may be raised, resulting in even more
+	// bus matrix contention
+	// So there is only one thing for it: even if there are more data to be transferred, we stop the DMA and (if necessary) force the output to low
+	// so that the black calibration of the monitor can still do its work
+	DMA_Stream_TypeDef *dmaStream = screenBuffer->screenLineDMAStream;
+	UInt32 dmaEnabled = READ_BIT(dmaStream->CR, DMA_SxCR_EN);
+	if (dmaEnabled != 0) {
+		DisableLineDMA(dmaStream);
+	}
+
+	DebugWriteChar('E');
+
+	// We can stop the trigger DMA request of the timer. It will be resumed
+	// at the start of the visible portion of the area
+	__HAL_TIM_DISABLE_DMA(screenBuffer->hSyncClockTimer, TIM_DMA_TRIGGER);
+
+	/* Check for error condition */
+	UInt32 lisr = screenBuffer->screenLineDMAController->LISR;
+
+	// TODO Calculate this based on stream number
+	UInt32 streamDirectModeErrorFlag = DMA_LISR_DMEIF0;
+	UInt32 streamTransferErrorFlag = DMA_LISR_TEIF0;
+
+	if (READ_BIT(lisr, streamDirectModeErrorFlag)) {
+		// Stream direct mode error
+		Error_Handler();
+	}
+	if (READ_BIT(lisr, streamTransferErrorFlag)) {
+		// Stream transfer mode error
+		Error_Handler();
+	}
+
+	// As stated in this forum answer (https://community.st.com/s/question/0D50X00009XkaG8/stm32f2xx-spi-dma-fifo-error), it seems that
+	// "What the reference manual doesn't make clear is the FIFO error is also triggered by falling below the FIFO threshold."
+	// So we have to ignore this error
+
+	/*if (READ_BIT(lisr, DMA_LISR_FEIF0)) {
+	 // FIFO transfer mode error
+	 Error_Handler();
+	 }*/
+
+	/* Preparation of a new DMA request */
+	// We clear all the Complete|Half Trasfer completed flags
+	SET_BIT(screenBuffer->screenLineDMAController->LIFCR, screenBuffer->dmaClearFlags);
+
+	// Line pixels freq scaling
+	// TODO Remove constant
+	if ((++screenBuffer->linePrescaler) == 2) {
+		screenBuffer->currentLineOffset += screenBuffer->linePixels;
+		screenBuffer->linePrescaler = 0;
+	}
+
+	// Data items to transfer are always the lines pixels
+	// In Mem2Per mode the "items" width are relative to the width of the "peripheral" bus (RM0090 - Section 10.3.10)
+	dmaStream->NDTR = screenBuffer->linePixels;
+	// Source memory address is simply buffer start + current line offset
+	dmaStream->M0AR = ((UInt32) screenBuffer->BufferPtr) + ((UInt32) screenBuffer->currentLineOffset);
+
+	if (screenBuffer->currentLineOffset < screenBuffer->bufferSize) {
+		// If the buffer is within the limits, we enable the dma stream
+		// This will only preload the data in the FIFO (at least in Mem2Per mode) [AN4031- Section 2.2.2]
+		SET_BIT(dmaStream->CR, DMA_SxCR_EN);
+	} else {
+		// We are at the end of the buffer
+		// Soon we will see the beginning of the porch area of the frame
+		// We DON'T enable the DMA either so we avoid locking the BusMatrix
+		dmaStream->NDTR = 0;
+	}
+
+	if (READ_BIT(TIM1->SR, TIM_FLAG_CC3) != 0) {
+		Error_Handler();
+	}
 }
 
 VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *screenBuffer) {
@@ -229,6 +287,7 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 	screenBuffer->bufferSize = framebufferSize;
 	screenBuffer->linePrescaler = 0;
 	screenBuffer->currentLineOffset = 0;
+	screenBuffer->vSyncing = true;
 
 	BYTE *buffer = (BYTE*) ralloc(framebufferSize);
 	if (buffer == NULL) {
@@ -287,6 +346,22 @@ VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameIn
 	return VGAErrorNone;
 }
 
+void DisableLineDMA(DMA_Stream_TypeDef *dmaStream) {
+	// If DMA is still enabled, we disable it to interrupt the transfer
+	// This is the only thing that has to be done [RM0090 - Section 10.3.14 ]
+	CLEAR_BIT(dmaStream->CR, DMA_SxCR_EN);
+
+	// We have to wait that DMA_SxCR_EN is effectively set to 0
+	// so we can setup our next transfer
+	while (READ_BIT(dmaStream->CR, DMA_SxCR_EN) != 0)
+		;
+
+	// We clear the output on the DMA peripheral since we are in the blanking portion and we don't know
+	// the exact output value where the transfer was interrupted
+	// TODO Assuming 8 bit peripheral for the moment
+	*((BYTE*) dmaStream->PAR) = 0x0;
+}
+
 void ScaleTiming(const Timing *timing, BYTE scale, Timing *dest) {
 	Int32 wholeLine = VGATimingGetSum(timing);
 
@@ -307,7 +382,7 @@ void ScaleTiming(const Timing *timing, BYTE scale, Timing *dest) {
 
 	Int32 scalingLoss = realWholeLineScaled - VGATimingGetSum(dest);
 	// In theory, we should never have a negative loss (scaled pixels are more that the original sum scaled)
-	// The code will handle the situation correctly, but it can indicate some logic/programmin error
+	// The code will handle the situation correctly, but it can indicate some logic/programming error
 	DebugAssert(scalingLoss >= 0);
 
 	// Assumption: Visible area should always scale correctly. let's just correct the back/front porch
@@ -426,6 +501,8 @@ VGAError SetupTimers(BYTE resScaling, VGAScreenBuffer *screenBuffer) {
 	DebugAssert(vSyncTimer->CCR2 >= 0 && vSyncTimer->CCR2 < vSyncTimer->CCR1);
 	DebugAssert(vSyncTimer->CCR3 >= 0 && vSyncTimer->CCR3 < vSyncTimer->CCR1 && vSyncTimer->CCR3 > vSyncTimer->CCR2);
 
+	vSyncTimer->EGR = TIM_EGR_UG;
+
 	return VGAErrorNone;
 }
 
@@ -478,8 +555,11 @@ VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, Sc
 	vgaScreenBuffer->mainPixelClockTimer = visualizationInfo->mainTimer;
 	vgaScreenBuffer->hSyncClockTimer = visualizationInfo->hSyncTimer;
 	vgaScreenBuffer->vSyncClockTimer = visualizationInfo->vSyncTimer;
+
 	vgaScreenBuffer->screenLineDMAController = DMA2;
 	vgaScreenBuffer->screenLineDMAStream = visualizationInfo->lineDMA->Instance;
+	// TODO Calculate this based on stream number
+	vgaScreenBuffer->dmaClearFlags = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0;
 
 	/*if ((result = SetupMainClockTree(scaledVideoTimings.PixelFrequencyMHz)) != VGAErrorNone) {
 	 return result;
@@ -492,7 +572,7 @@ VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, Sc
 	if (visualizationInfo->BitsPerPixel == Bpp3) {
 		// When using the 3 bpp visualization, we use the low 8 GPIOE pins to output our colors
 		// (3 bits for blue, 3 bits for green, 2 bits for red, in "little endian" order (Red -> [0, 1], Green -> [2, 4], Blu -> [5-7])
-		vgaScreenBuffer->screenLineDMAStream->PAR = (uint32_t) GPIOE;
+		vgaScreenBuffer->screenLineDMAStream->PAR = (uint32_t) &GPIOE->ODR;
 		vgaScreenBuffer->screenLineDMAStream->M0AR = (uint32_t) vgaScreenBuffer->BufferPtr;
 		vgaScreenBuffer->screenLineDMAStream->NDTR = (uint32_t) vgaScreenBuffer->linePixels;
 
@@ -597,6 +677,83 @@ VGAError VGAStartOutput() {
 	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_3);
 
+	for (size_t line = 0; line < 300; line++) {
+		for (size_t pixel = 0; pixel < 400; pixel++) {
+			screenBuf->BufferPtr[line * 404 + pixel] = pixel % 4;
+		}
+	}
+
+	for (size_t line = 100; line < 200; line++) {
+		for (size_t pixel = 150; pixel < 250; pixel++) {
+			screenBuf->BufferPtr[line * 404 + pixel] |= 0x80;
+		}
+	}
+
+	/*for (size_t line = 0; line < 75; line++) {
+	 for (size_t pixel = 0; pixel < 100; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 }
+	 for (size_t pixel = 100; pixel < 200; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 }
+	 for (size_t pixel = 200; pixel < 300; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 }
+	 for (size_t pixel = 300; pixel < 400; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 }
+	 }
+	 for (size_t line = 75; line < 150; line++) {
+	 for (size_t pixel = 0; pixel < 100; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 }
+	 for (size_t pixel = 100; pixel < 200; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 }
+	 for (size_t pixel = 200; pixel < 300; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 }
+	 for (size_t pixel = 300; pixel < 400; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 }
+	 }
+
+	 for (size_t line = 150; line < 225; line++) {
+	 for (size_t pixel = 0; pixel < 100; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 }
+	 for (size_t pixel = 100; pixel < 200; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 }
+	 for (size_t pixel = 200; pixel < 300; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 }
+	 for (size_t pixel = 300; pixel < 400; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 }
+	 }
+
+	 for (size_t line = 225; line < 300; line++) {
+	 for (size_t pixel = 0; pixel < 100; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 }
+	 for (size_t pixel = 100; pixel < 200; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 }
+	 for (size_t pixel = 200; pixel < 300; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 }
+	 for (size_t pixel = 300; pixel < 400; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 }
+	 }*/
+
+	/*for (size_t line = 100; line < 200; line++) {
+	 for (size_t pixel = 150; pixel < 250; pixel++) {
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0x21;
+	 }
+	 }*/
+
 	SET_BIT(screenBuf->screenLineDMAStream->CR, DMA_SxCR_EN);
 
 	UInt32 thresholdSelected = READ_BIT(screenBuf->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
@@ -623,7 +780,6 @@ VGAError VGAStartOutput() {
 	while (READ_BIT(screenBuf->screenLineDMAStream->FCR, DMA_SxFCR_FS) != fifoStatusToReach) {
 
 	}
-
 	screenBuf->state = VGAStateActive;
 
 	// END STEP: we start the main timer. Ther main timer direclty feeds the Hsync so we don't need any

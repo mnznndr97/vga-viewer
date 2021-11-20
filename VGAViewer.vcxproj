@@ -121,7 +121,6 @@
     <ClInclude Include="core\inc\main.h" />
     <ClInclude Include="Core\Inc\ram.h" />
     <ClInclude Include="core\inc\screen\screen.h" />
-    <ClInclude Include="core\inc\screen\screenbuffer.h" />
     <ClInclude Include="core\inc\stm32f4xx_hal_conf.h" />
     <ClInclude Include="core\inc\stm32f4xx_it.h" />
     <ClInclude Include="core\inc\typedefs.h" />
