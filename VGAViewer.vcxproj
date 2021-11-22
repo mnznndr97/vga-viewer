@@ -118,6 +118,7 @@
     <ClInclude Include="core\inc\crc7.h" />
     <ClInclude Include="Core\Inc\FreeRTOSConfig.h" />
     <ClInclude Include="Core\Inc\hal_extensions.h" />
+    <ClInclude Include="Core\Inc\intmath.h" />
     <ClInclude Include="core\inc\main.h" />
     <ClInclude Include="Core\Inc\ram.h" />
     <ClInclude Include="core\inc\screen\screen.h" />

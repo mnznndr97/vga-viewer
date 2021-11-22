@@ -12,12 +12,20 @@
 #include <stdio.h>
 #include <console.h>
 
+#ifdef _DEBUG
+#define DRAWPIXELASSERT
+#endif // _DEBUG
+
 extern void Error_Handler();
 
 // ##### Private forward declarations #####
 
 static VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *buffer);
 static VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameInfo *finalTimes);
+
+static void DrawPixel(PointS pixel, const Pen *pen);
+static void DrawPixelPack(PointS pixel, const Pen *pen);
+
 static void DisableLineDMA(DMA_Stream_TypeDef *dmaStream);
 void HandleDMALineEnd(VGAScreenBuffer *screenBuffer);
 static VGAError ValidateTiming(const Timing *timing);
@@ -295,6 +303,9 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 	}
 
 	screenBuffer->BufferPtr = buffer;
+	screenBuffer->base.DrawCallback = &DrawPixel;
+    screenBuffer->base.DrawPackCallback = &DrawPixelPack;
+    screenBuffer->base.packSize = 4;
 
 	// Let's initialize the border pixels -> these will remain untouched for the rest of the application lifetime
 	for (size_t line = 0; line < frameLines; line++) {
@@ -344,6 +355,62 @@ VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameIn
 
 	// TODO Check again parameter scaling ??
 	return VGAErrorNone;
+}
+
+void DrawPixel(PointS pixel, const Pen *pen) {
+	VGAScreenBuffer *buffer = _activeScreenBuffer;
+
+#ifdef DRAWPIXELASSERT
+    DebugAssert(buffer != NULL);
+    DebugAssert(pixel.x >= 0 && pixel.x < buffer->base.screenSize.width);
+    DebugAssert(pixel.y >= 0 && pixel.y < buffer->base.screenSize.height);
+    DebugAssert(pen != NULL);
+#endif // DRAWPIXELASSERT
+
+	ARGB8Color color = pen->color;
+	BYTE r = color.components.R;
+	BYTE g = color.components.G;
+	BYTE b = color.components.B;
+
+	// In case of a Bpp3, R is only 2 bits (the r byte MSB)
+	BYTE pixelColor = r >> 6;
+	pixelColor |= ((g >> 5) << 2);
+	pixelColor |= ((b >> 5) << 5);
+
+	buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x] = pixelColor;
+}
+
+void DrawPixelPack(PointS pixel, const Pen *pen) {
+	VGAScreenBuffer *buffer = _activeScreenBuffer;
+
+#ifdef DRAWPIXELASSERT
+    DebugAssert(buffer != NULL);
+    DebugAssert(pixel.x >= 0 && pixel.x < buffer->base.screenSize.width);
+    DebugAssert(pixel.y >= 0 && pixel.y < buffer->base.screenSize.height);
+#endif // DRAWPIXELASSERT
+
+	ARGB8Color color = pen->color;
+	BYTE r = color.components.R;
+	BYTE g = color.components.G;
+	BYTE b = color.components.B;
+
+	// In case of a Bpp3, R is only 2 bits (the r byte MSB)
+	BYTE pixelColor = r >> 6;
+	pixelColor |= ((g >> 5) << 2);
+	pixelColor |= ((b >> 5) << 5);
+
+	// TODO: Can this be optimized?
+	UInt32 wordPixelColor = pixelColor | pixelColor << 8 | pixelColor << 16 | pixelColor << 24;
+
+	// We need to calculate the pack address. In our case, the pack address must be 32 bit aligned since we are using a 32bit
+    // memory access. The processor will throw an exception if the access is not aligned. 
+	BYTE *linePtr = &buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x];
+    DebugAssert(((UInt32)linePtr & 0x03) == 0x0);
+
+	UInt32 *wordPtr = ((UInt32*) linePtr);
+
+    // Finally we store our pack
+	*wordPtr = wordPixelColor;
 }
 
 void DisableLineDMA(DMA_Stream_TypeDef *dmaStream) {
@@ -676,18 +743,6 @@ VGAError VGAStartOutput() {
 	// Visible area start + Visible area end interrupt must be enabled (in PWM in order to have a "loop" ov events each cycle)
 	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_3);
-
-	for (size_t line = 0; line < 300; line++) {
-		for (size_t pixel = 0; pixel < 400; pixel++) {
-			screenBuf->BufferPtr[line * 404 + pixel] = pixel % 4;
-		}
-	}
-
-	for (size_t line = 100; line < 200; line++) {
-		for (size_t pixel = 150; pixel < 250; pixel++) {
-			screenBuf->BufferPtr[line * 404 + pixel] |= 0x80;
-		}
-	}
 
 	/*for (size_t line = 0; line < 75; line++) {
 	 for (size_t pixel = 0; pixel < 100; pixel++) {

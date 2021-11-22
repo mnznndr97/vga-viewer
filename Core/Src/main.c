@@ -77,6 +77,9 @@ const osThreadAttr_t vgaConnectionTa_attributes = { .name = "vgaConnectionTa", .
 /* Definitions for _vgaCheckConnec */
 osThreadId_t _vgaCheckConnecHandle;
 const osThreadAttr_t _vgaCheckConnec_attributes = { .name = "_vgaCheckConnec", .stack_size = 160 * 4, .priority = (osPriority_t) osPriorityLow, };
+/* Definitions for _mainTask */
+osThreadId_t _mainTaskHandle;
+const osThreadAttr_t _mainTask_attributes = { .name = "_mainTask", .stack_size = 192 * 4, .priority = (osPriority_t) osPriorityNormal, };
 /* Definitions for _vgaEDIDRcvEvnt */
 osEventFlagsId_t _vgaEDIDRcvEvntHandle;
 const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = { .name = "_vgaEDIDRcvEvnt" };
@@ -85,6 +88,9 @@ const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = { .name = "_vgaEDIDRcvEvnt
 static EDID _vgaEDID = { 0 };
 static ScreenBuffer *_screenBuffer = NULL;
 static VGAVisualizationInfo _visualizationInfos = { 0 };
+
+static uint8_t userCommand = 0;
+static volatile uint8_t userCommandReceived = 0;
 
 /* USER CODE END PV */
 
@@ -100,6 +106,7 @@ static void MX_DAC_Init(void);
 static void MX_TIM4_Init(void);
 void ConnecToVGATask(void *argument);
 void VGACheckConnectionTask(void *argument);
+void MainTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void HandleI2CError(I2C_HandleTypeDef *hi2c);
@@ -238,6 +245,13 @@ void HAL_I2C_AbortCpltCallback(I2C_HandleTypeDef *hi2c) {
 	printf("I2C Transfer aborted\r\n");
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	if (huart == &huart4) {
+		userCommand = (BYTE) huart->Instance->DR;
+		userCommandReceived = 1;
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -253,6 +267,7 @@ int main(void) {
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	SET_BIT(DBGMCU->APB1FZ, DBGMCU_APB1_FZ_DBG_TIM4_STOP);
+	SET_BIT(SCB->CCR, SCB_CCR_UNALIGN_TRP_Msk);
 
 	/* USER CODE END 1 */
 
@@ -285,13 +300,12 @@ int main(void) {
 
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 
-	printf("\033[0;0H\033[2J\033[0mStarting VGA Viewer 0.21.1108.1\r\n");
+	printf("\033[0;0H\033[2J\033[0mStarting VGA Viewer 0.21.1122.1");
+#ifdef DEBUG
+	printf(" - Debug Version");
+#endif
+	printf("\r\n");
 
-	register PointS point;
-	point.x = 0;
-	point.y = 0;
-
-	ScreenDrawPixel(NULL, point, 0);
 	/*uint8_t buffer[128];
 	 HAL_StatusTypeDef halStatus = HAL_I2C_Master_Receive(&hi2c2, 0x50 << 1, buffer, 128, HAL_MAX_DELAY);
 
@@ -414,8 +428,12 @@ int main(void) {
 	/* creation of _vgaCheckConnec */
 	_vgaCheckConnecHandle = osThreadNew(VGACheckConnectionTask, NULL, &_vgaCheckConnec_attributes);
 
+	/* creation of _mainTask */
+	_mainTaskHandle = osThreadNew(MainTask, NULL, &_mainTask_attributes);
+
 	/* USER CODE BEGIN RTOS_THREADS */
 	CHECK_OS_STATUS(osThreadSuspend(_vgaCheckConnecHandle));
+	CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
 	/* add threads, ... */
 	/* USER CODE END RTOS_THREADS */
 
@@ -920,15 +938,20 @@ void ConnecToVGATask(void *argument) {
 
 		VGADumpTimersFrequencies();
 		// We are connected. We resume the low priority check connection task and we suspend ourself
-		CHECK_OS_STATUS(osThreadResume(_vgaCheckConnecHandle));
+		CHECK_OS_STATUS(osThreadResume(_mainTaskHandle));
+
+		Pen currentPen = { };
+		for (size_t line = 0; line < 300; line++) {
+			for (size_t pixel = 0; pixel < 400; pixel++) {
+				currentPen.color.components.R = (pixel % 4) * 64;
+				ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
+			}
+		}
 
 		vgaResult = VGAStartOutput();
 		if (vgaResult != VGAErrorNone) {
 			Error_Handler();
 		}
-
-		/*while (1) {
-		 }*/
 
 		// The osThreadSuspend will put the thread in blocked mode and yield the execution to another one
 		// After resuming, we should have no error on return of this function
@@ -970,6 +993,60 @@ void VGACheckConnectionTask(void *argument) {
 		}
 	}
 	/* USER CODE END VGACheckConnectionTask */
+}
+
+/* USER CODE BEGIN Header_MainTask */
+/**
+ * @brief Function implementing the _mainTask thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_MainTask */
+void MainTask(void *argument) {
+	/* USER CODE BEGIN MainTask */
+
+	// UART Recv loop
+	while (1) {
+		userCommandReceived = 0;
+		HAL_StatusTypeDef status = HAL_UART_Receive_IT(&huart4, &userCommand, 1);
+		UInt32 startingTick = HAL_GetTick();
+		while (!userCommandReceived && (HAL_GetTick() - startingTick) < 1000) {
+		}
+
+		if (!userCommandReceived) {
+			HAL_UART_AbortReceive_IT(&huart4);
+		} else if (userCommand == 'm') {
+			Pen currentPen = { 0 };
+			currentPen.color.components.R = 0xFF;
+			ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
+
+		} else if (userCommand == '\e') {
+			Pen currentPen = { };
+			for (size_t line = 0; line < 300; line++) {
+				for (size_t pixel = 0; pixel < 400; pixel++) {
+					currentPen.color.components.R = (pixel % 4) * 64;
+					ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
+				}
+			}
+		}
+	}
+
+	/*if (status == HAL_OK) {
+	 // We received a command from the user
+	 int a = 0;
+	 } else if ((status = HAL_I2C_IsDeviceReady(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, 2, 250)) == HAL_OK) {
+	 // Device still connected, nothing to do
+	 } else {
+	 printf("\033[1;91mVGA Disconnected!\033[0m\r\n");
+	 // If monitor is detached, we can wait a little more before trying reconnecting
+	 osDelay(5000);
+	 CHECK_OS_STATUS(osThreadResume(vgaConnectionTaHandle));
+	 CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
+	 }
+
+	 }*/
+
+	/* USER CODE END MainTask */
 }
 
 /**
@@ -1019,8 +1096,8 @@ void Error_Handler(void) {
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-                /* User can add his own implementation to report the file name and line number,
-                 ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+                  /* User can add his own implementation to report the file name and line number,
+                   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
