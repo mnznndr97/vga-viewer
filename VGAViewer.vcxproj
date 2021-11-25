@@ -66,6 +66,8 @@
     <ClCompile Include="Core\Src\cmsis_extensions.c" />
     <ClCompile Include="Core\Src\console.c" />
     <ClCompile Include="core\src\crc7.c" />
+    <ClCompile Include="Core\Src\fonts\glyph.c" />
+    <ClCompile Include="Core\Src\fonts\hp_simplified.c" />
     <ClCompile Include="Core\Src\freertos.c" />
     <ClCompile Include="Core\Src\hal_extensions.c" />
     <ClCompile Include="core\src\main.c" />
@@ -116,6 +118,8 @@
     <ClInclude Include="Core\Inc\cmsis_extensions.h" />
     <ClInclude Include="Core\Inc\console.h" />
     <ClInclude Include="core\inc\crc7.h" />
+    <ClInclude Include="Core\Inc\fonts\glyph.h" />
+    <ClInclude Include="Core\Inc\fonts\hp_simplified.h" />
     <ClInclude Include="Core\Inc\FreeRTOSConfig.h" />
     <ClInclude Include="Core\Inc\hal_extensions.h" />
     <ClInclude Include="Core\Inc\intmath.h" />

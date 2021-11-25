@@ -1019,9 +1019,18 @@ void MainTask(void *argument) {
 			HAL_UART_AbortReceive_IT(&huart4);
 		} else if (userCommand == 'm') {
 			Pen currentPen = { 0 };
-			currentPen.color.components.R = 0xFF;
-			ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
-			//ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
+
+			/*currentPen.color.components.R = 0xFF;
+			 ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
+
+			 currentPen.color.argb = 0x00FFFFFF;
+			 ScreenDrawString(_screenBuffer, "Ciao!", (PointS ) { 125, 75 }, &currentPen);*/
+
+			currentPen.color.argb = 0x00;
+			ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
+
+			currentPen.color.argb = 0x00ffc945;
+			ScreenDrawString(_screenBuffer, "?123456%", (PointS ) { 55, 130 }, &currentPen);
 
 		} else if (userCommand == '\e') {
 			Pen currentPen = { };

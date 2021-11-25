@@ -30,4 +30,6 @@ typedef uint16_t UInt16;
 typedef uint32_t UInt32;
 typedef uint64_t UInt64;
 
+typedef const BYTE* PCBYTE;
+
 #endif /* INC_TYPEDEFS_H_ */
