@@ -277,10 +277,11 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 
 	// Here we setup the screen dimension in the VGAScreenBuffer
 	screenBuffer->base.screenSize.width = lineVisiblePixels;
-	screenBuffer->base.screenSize.height = totalLinePixels;
 	screenBuffer->linePixels = totalLinePixels;
 
 	size_t frameLines = finalTimings->FrameTiming.VisibleArea;
+	screenBuffer->base.screenSize.height = frameLines;
+
 	if (info->DoubleBuffered)
 		frameLines *= 2;
 
@@ -304,8 +305,8 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 
 	screenBuffer->BufferPtr = buffer;
 	screenBuffer->base.DrawCallback = &DrawPixel;
-    screenBuffer->base.DrawPackCallback = &DrawPixelPack;
-    screenBuffer->base.packSize = 4;
+	screenBuffer->base.DrawPackCallback = &DrawPixelPack;
+	screenBuffer->base.packSize = 4;
 
 	// Let's initialize the border pixels -> these will remain untouched for the rest of the application lifetime
 	for (size_t line = 0; line < frameLines; line++) {
@@ -403,13 +404,13 @@ void DrawPixelPack(PointS pixel, const Pen *pen) {
 	UInt32 wordPixelColor = pixelColor | pixelColor << 8 | pixelColor << 16 | pixelColor << 24;
 
 	// We need to calculate the pack address. In our case, the pack address must be 32 bit aligned since we are using a 32bit
-    // memory access. The processor will throw an exception if the access is not aligned. 
+	// memory access. The processor will throw an exception if the access is not aligned.
 	BYTE *linePtr = &buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x];
-    DebugAssert(((UInt32)linePtr & 0x03) == 0x0);
+	DebugAssert(((UInt32) linePtr & 0x03) == 0x0);
 
 	UInt32 *wordPtr = ((UInt32*) linePtr);
 
-    // Finally we store our pack
+	// Finally we store our pack
 	*wordPtr = wordPixelColor;
 }
 
@@ -744,62 +745,74 @@ VGAError VGAStartOutput() {
 	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_3);
 
-	/*for (size_t line = 0; line < 75; line++) {
+	for (size_t line = 0; line < 300; line++) {
+		int divisions = 400 / 8;
+		int redDiv = 400 / 4;
+		for (size_t pixel = 0; pixel < 400; pixel++) {
+			int color = pixel / divisions;
+			int colorR = pixel / redDiv;
+			//screenBuf->BufferPtr[line * 404 + pixel] = (color << 5) | (color << 2) | (colorR);
+			screenBuf->BufferPtr[line * 404 + pixel] = (color << 2) | (colorR);
+		}
+	}
+
+	/*int shift = 2;
+	 for (size_t line = 0; line < 75; line++) {
 	 for (size_t pixel = 0; pixel < 100; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0 << shift;
 	 }
 	 for (size_t pixel = 100; pixel < 200; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1 << shift;
 	 }
 	 for (size_t pixel = 200; pixel < 300; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2 << shift;
 	 }
 	 for (size_t pixel = 300; pixel < 400; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3 << shift;
 	 }
 	 }
 	 for (size_t line = 75; line < 150; line++) {
 	 for (size_t pixel = 0; pixel < 100; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3 << shift;
 	 }
 	 for (size_t pixel = 100; pixel < 200; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0 << shift;
 	 }
 	 for (size_t pixel = 200; pixel < 300; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1 << shift;
 	 }
 	 for (size_t pixel = 300; pixel < 400; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2 << shift;
 	 }
 	 }
 
 	 for (size_t line = 150; line < 225; line++) {
 	 for (size_t pixel = 0; pixel < 100; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2 << shift;
 	 }
 	 for (size_t pixel = 100; pixel < 200; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3 << shift;
 	 }
 	 for (size_t pixel = 200; pixel < 300; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0 << shift;
 	 }
 	 for (size_t pixel = 300; pixel < 400; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1 << shift;
 	 }
 	 }
 
 	 for (size_t line = 225; line < 300; line++) {
 	 for (size_t pixel = 0; pixel < 100; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 1;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 1 << shift;
 	 }
 	 for (size_t pixel = 100; pixel < 200; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 2;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 2 << shift;
 	 }
 	 for (size_t pixel = 200; pixel < 300; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 3;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 3 << shift;
 	 }
 	 for (size_t pixel = 300; pixel < 400; pixel++) {
-	 screenBuf->BufferPtr[line * 404 + pixel] = 0;
+	 screenBuf->BufferPtr[line * 404 + pixel] = 0 << shift;
 	 }
 	 }*/
 

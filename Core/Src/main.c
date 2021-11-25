@@ -887,7 +887,7 @@ void ConnecToVGATask(void *argument) {
 		// First step: enable the per and launch the Rcv command with the interrupts enabled
 		__HAL_I2C_ENABLE(&hi2c2);
 		HAL_StatusTypeDef halStatus = HAL_I2C_Master_Receive_IT(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, (uint8_t*) &_vgaEDID, sizeof(EDID));
-		if (halStatus == HAL_ERROR && hi2c2.ErrorCode & HAL_I2C_ERROR_TIMEOUT) {
+		if (halStatus == HAL_ERROR && (hi2c2.ErrorCode & HAL_I2C_ERROR_TIMEOUT) != 0) {
 			// If the HAL_ERROR is flagged with the timeout, the bus is busy. We can't do anything.
 			printf("Unable to initialize VGA I2C transmission. Nothing connected (bus busy)\r\n");
 			// We simply repeat with some waiting
@@ -940,15 +940,17 @@ void ConnecToVGATask(void *argument) {
 		// We are connected. We resume the low priority check connection task and we suspend ourself
 		CHECK_OS_STATUS(osThreadResume(_mainTaskHandle));
 
-		Pen currentPen = { };
-		for (size_t line = 0; line < 300; line++) {
-			for (size_t pixel = 0; pixel < 400; pixel++) {
-				currentPen.color.components.R = (pixel % 4) * 64;
-				ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
-			}
-		}
-
 		vgaResult = VGAStartOutput();
+
+		/*Pen currentPen = { };
+		 for (size_t line = 0; line < 300; line++) {
+		 for (size_t pixel = 0; pixel < 400; pixel++) {
+		 currentPen.color.components.R = (pixel % 4) * 64;
+		 // currentPen.color.components.R = 0x3;
+		 ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
+		 }
+		 }*/
+
 		if (vgaResult != VGAErrorNone) {
 			Error_Handler();
 		}
@@ -1019,12 +1021,27 @@ void MainTask(void *argument) {
 			Pen currentPen = { 0 };
 			currentPen.color.components.R = 0xFF;
 			ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
+			//ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
 
 		} else if (userCommand == '\e') {
 			Pen currentPen = { };
 			for (size_t line = 0; line < 300; line++) {
 				for (size_t pixel = 0; pixel < 400; pixel++) {
 					currentPen.color.components.R = (pixel % 4) * 64;
+					ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
+				}
+			}
+		} else if (userCommand == 'p') {
+			Pen currentPen = { };
+			ScreenBuffer *screenBuffer = _screenBuffer;
+
+			float bluDivisions = screenBuffer->screenSize.height / 256.0f;
+			float greenDivisions = screenBuffer->screenSize.width / 256.0f;
+			for (size_t line = 0; line < screenBuffer->screenSize.height; line++) {
+				currentPen.color.components.B = (BYTE) (line / bluDivisions);
+
+				for (size_t pixel = 0; pixel < screenBuffer->screenSize.width; pixel++) {
+					currentPen.color.components.G = (BYTE) (pixel / greenDivisions);
 					ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
 				}
 			}
@@ -1093,12 +1110,12 @@ void Error_Handler(void) {
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
+void assert_failed(uint8_t* file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-                  /* User can add his own implementation to report the file name and line number,
-                   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+    /* USER CODE BEGIN 6 */
+                    /* User can add his own implementation to report the file name and line number,
+                     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+                     /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 
