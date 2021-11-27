@@ -23,6 +23,7 @@ extern void Error_Handler();
 static VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *buffer);
 static VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameInfo *finalTimes);
 
+static void Draw3bppPixelImpl(BYTE *pixelPtr, ARGB8Color color);
 static void DrawPixel(PointS pixel, const Pen *pen);
 static void DrawPixelPack(PointS pixel, const Pen *pen);
 
@@ -34,6 +35,15 @@ static VGAError SetupMainClockTree(float pixelMHzFreq);
 static VGAError SetupTimers(BYTE resScaling, VGAScreenBuffer *screenBuffer);
 
 // ##### Private types declarations #####
+
+// We 
+// 
+
+/// Compacts the 24 color bits into a single byte
+/// \remarks Red is only 2 bits (the r byte MSB), Green and Blue are 3 bits
+#define RGB_TO_3BPP(r,g,b) ((r) >> 6) | \
+                           (((g) >> 5) << 2) | \
+                           (((b) >> 5) << 5);
 typedef enum _VGAState {
 	VGAStateStopped, VGAStateSuspended,
 
@@ -108,11 +118,11 @@ void TIM1_CC_IRQHandler(void) {
 	}
 
 	if (screenBuffer->vSyncing) {
-		DebugWriteChar('V');
+		//DebugWriteChar('V');
 
 		DMA_Stream_TypeDef *dmaStream = screenBuffer->screenLineDMAStream;
 		if (dmaStream->M0AR != (UInt32) screenBuffer->BufferPtr) {
-			DebugWriteChar('v');
+			//DebugWriteChar('v');
 			// DMA should not be running in our ideal world. But as we already mentioned, the BusMatrix contentions can
 			// introduce some latency
 			// So what to do in the vSyncing portion of the frame?
@@ -137,7 +147,7 @@ void TIM1_CC_IRQHandler(void) {
 		SET_BIT(screenBuffer->hSyncClockTimer->Instance->DIER, TIM_DMA_TRIGGER);
 
 		// After the DMA start, we can send a little char to the ITM to let the programmer know what is happening
-		DebugWriteChar('S');
+		//DebugWriteChar('S');
 	} else {
 		HandleDMALineEnd(screenBuffer);
 	}
@@ -171,7 +181,7 @@ void TIM3_IRQHandler() {
 		screenBuffer->lines = 0;
 	}
 	screenBuffer->vSyncing = isVSyncing;
-	DebugWriteChar('v' + isVSyncing);
+	//DebugWriteChar('v' + isVSyncing);
 }
 
 void HandleDMALineEnd(VGAScreenBuffer *screenBuffer) {
@@ -199,7 +209,7 @@ void HandleDMALineEnd(VGAScreenBuffer *screenBuffer) {
 		DisableLineDMA(dmaStream);
 	}
 
-	DebugWriteChar('E');
+	//DebugWriteChar('E');
 
 	// We can stop the trigger DMA request of the timer. It will be resumed
 	// at the start of the visible portion of the area
@@ -358,6 +368,28 @@ VGAError CorrectVideoFrameTimings(const VGAVisualizationInfo *info, VideoFrameIn
 	return VGAErrorNone;
 }
 
+void Draw3bppPixelImpl(BYTE *pixelPtr, ARGB8Color color) {
+	BYTE r = color.components.R;
+	BYTE g = color.components.G;
+	BYTE b = color.components.B;
+
+	// We apply alpha correction only if necessary
+	// In this way we can avoid floating point operations
+	if (color.components.A != 0xFF) {
+		BYTE currentPixelColor = *pixelPtr;
+
+		float normalizedAlpha = color.components.A / 255.0f;
+		float normalizedBgAlpha = 1.0f - normalizedAlpha;
+
+		r = (BYTE) ((r * normalizedAlpha) + ((currentPixelColor << 6) * normalizedBgAlpha));
+		g = (BYTE) ((g * normalizedAlpha) + (((currentPixelColor & 0x1c) << 3) * normalizedBgAlpha));
+		b = (BYTE) ((b * normalizedAlpha) + ((currentPixelColor & 0xE0) * normalizedBgAlpha));
+	}
+
+	*pixelPtr = RGB_TO_3BPP(r, g, b)
+	;
+}
+
 void DrawPixel(PointS pixel, const Pen *pen) {
 	VGAScreenBuffer *buffer = _activeScreenBuffer;
 
@@ -368,17 +400,10 @@ void DrawPixel(PointS pixel, const Pen *pen) {
     DebugAssert(pen != NULL);
 #endif // DRAWPIXELASSERT
 
-	ARGB8Color color = pen->color;
-	BYTE r = color.components.R;
-	BYTE g = color.components.G;
-	BYTE b = color.components.B;
-
-	// In case of a Bpp3, R is only 2 bits (the r byte MSB)
-	BYTE pixelColor = r >> 6;
-	pixelColor |= ((g >> 5) << 2);
-	pixelColor |= ((b >> 5) << 5);
-
-	buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x] = pixelColor;
+	if (buffer->base.bitsPerPixel == Bpp3) {
+		BYTE *vgaBufferPtr = &buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x];
+		Draw3bppPixelImpl(vgaBufferPtr, pen->color);
+	}
 }
 
 void DrawPixelPack(PointS pixel, const Pen *pen) {
@@ -390,28 +415,31 @@ void DrawPixelPack(PointS pixel, const Pen *pen) {
     DebugAssert(pixel.y >= 0 && pixel.y < buffer->base.screenSize.height);
 #endif // DRAWPIXELASSERT
 
-	ARGB8Color color = pen->color;
-	BYTE r = color.components.R;
-	BYTE g = color.components.G;
-	BYTE b = color.components.B;
-
-	// In case of a Bpp3, R is only 2 bits (the r byte MSB)
-	BYTE pixelColor = r >> 6;
-	pixelColor |= ((g >> 5) << 2);
-	pixelColor |= ((b >> 5) << 5);
-
-	// TODO: Can this be optimized?
-	UInt32 wordPixelColor = pixelColor | pixelColor << 8 | pixelColor << 16 | pixelColor << 24;
-
 	// We need to calculate the pack address. In our case, the pack address must be 32 bit aligned since we are using a 32bit
 	// memory access. The processor will throw an exception if the access is not aligned.
-	BYTE *linePtr = &buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x];
-	DebugAssert(((UInt32) linePtr & 0x03) == 0x0);
+	BYTE *pixelPtr = &buffer->BufferPtr[pixel.y * buffer->linePixels + pixel.x];
+	DebugAssert(((UInt32) pixelPtr & 0x03) == 0x0);
 
-	UInt32 *wordPtr = ((UInt32*) linePtr);
+	ARGB8Color color = pen->color;
+	if (color.components.A != 0xFF) {
+		// If we are using alpha, the underling 4 background pixels can be different so we must fallback to a single
+		// draw call per pixel
 
-	// Finally we store our pack
-	*wordPtr = wordPixelColor;
+		Draw3bppPixelImpl(pixelPtr, color);
+		Draw3bppPixelImpl(pixelPtr + 1, color);
+		Draw3bppPixelImpl(pixelPtr + 2, color);
+		Draw3bppPixelImpl(pixelPtr + 3, color);
+	} else {
+		BYTE pixelColor = RGB_TO_3BPP(color.components.R, color.components.G, color.components.B)
+		;
+
+		// TODO: Can this be optimized?
+		UInt32 wordPixelColor = pixelColor | pixelColor << 8 | pixelColor << 16 | pixelColor << 24;
+
+		UInt32 *wordPtr = ((UInt32*) pixelPtr);
+		// Finally we store our pack
+		*wordPtr = wordPixelColor;
+	}
 }
 
 void DisableLineDMA(DMA_Stream_TypeDef *dmaStream) {

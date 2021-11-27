@@ -1026,14 +1026,18 @@ void MainTask(void *argument) {
 			 currentPen.color.argb = 0x00FFFFFF;
 			 ScreenDrawString(_screenBuffer, "Ciao!", (PointS ) { 125, 75 }, &currentPen);*/
 
-			currentPen.color.argb = 0x00;
+			currentPen.color.argb = 0xff000000;
 			ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
 
-			currentPen.color.argb = 0x00ffc945;
-			ScreenDrawString(_screenBuffer, "?123456%", (PointS ) { 55, 130 }, &currentPen);
+			currentPen.color.argb = 0xff008080;
+			//ScreenDrawRectangle(_screenBuffer, (PointS ) { 55, 128 }, (SizeS ) { 300, 22 }, &currentPen);
+
+			currentPen.color.argb = 0xffffc945;
+			ScreenDrawString(_screenBuffer, "?pjg_\\56%", (PointS ) { 55, 130 }, &currentPen);
 
 		} else if (userCommand == '\e') {
 			Pen currentPen = { };
+			currentPen.color.components.A = 0xFF;
 			for (size_t line = 0; line < 300; line++) {
 				for (size_t pixel = 0; pixel < 400; pixel++) {
 					currentPen.color.components.R = (pixel % 4) * 64;
@@ -1044,6 +1048,7 @@ void MainTask(void *argument) {
 			Pen currentPen = { };
 			ScreenBuffer *screenBuffer = _screenBuffer;
 
+			currentPen.color.components.A = 0xFF;
 			float bluDivisions = screenBuffer->screenSize.height / 256.0f;
 			float greenDivisions = screenBuffer->screenSize.width / 256.0f;
 			for (size_t line = 0; line < screenBuffer->screenSize.height; line++) {

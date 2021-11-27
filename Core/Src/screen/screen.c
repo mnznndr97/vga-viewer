@@ -16,6 +16,19 @@
 extern UInt32 _currentLineAddr;
 extern BYTE _currentLinePrescaler;
 
+ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
+	// Simple level calculation. Our glyph bitmap levels range from 0 .. 64
+	float glyphPixelLevel = glyphLevel / 64.0f;
+
+	// To better display the glyph, I assumed that is better to directly work only on the alpha value
+	// In our case, the font bitmaps are exported from Window$. Some of the pixels at the border of the glyph
+	// may have a level that is near zero (but not zero). If we modify the RGB components leaving the alpha unaltered
+	// for these pixels, we get on the display some black pixels. So i think that is better to only remap the alpha level using 
+	// the glyph level
+	fontColor.components.A = fontColor.components.A * glyphPixelLevel;
+	return fontColor;
+}
+
 void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS point, GlyphMetrics *charMetrics, const Pen *pen) {
 	// First we get all the information about our character
 	PCBYTE glyphBufferPtr;
@@ -28,7 +41,7 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 
 	// We calculate our glyph origin in screen cordinates
 	Int16 glyphOriginX = point.x + charMetrics->glyphOrigin.x;
-	Int16 glyphOriginY = point.y + 36 - charMetrics->glyphOrigin.y;
+	Int16 glyphOriginY = point.y + charMetrics->glyphOrigin.y;
 
 	// If glyph is outside the screen (before origin) we need to skip some lines
 	// TODO: check byte cast
@@ -63,19 +76,45 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 
 	// Classic line loop
 	for (UInt16 line = vStart; line < vEnd; ++line, ++glyphLine) {
-		// We recalculate the current starting pixel of the glyph in case we was startng out of the screen
+		// We recalculate the current starting pixel of the glyph in case we were starting out of the screen
 		BYTE glyphPixel = glyphPixelCache;
-		for (UInt16 pixel = hStart; pixel < hEnd; ++pixel, ++glyphPixel) {
-			// We read the pixel level from the glyph
-			BYTE pixelLevel = glyphBufferPtr[glyphLine * glyphBufferRowWidth + glyphPixel];
 
-			// Simple level calculation
-			float glyphPixelLevel = pixelLevel / 64.0f;
+		// We begin our drawing loop
+		UInt16 currentPixel = hStart;
+		// Since glyph rows are aligned at word boundaries, we can read 4 levels at the time
+		// We just need to make sure we are not starting from an unaligned address
+		for (; (glyphPixel & 0x3) != 0 && currentPixel < hEnd; ++currentPixel, ++glyphPixel) {
+			// We read the glyph level from the glyph
+			BYTE glyphLevel = glyphBufferPtr[glyphLine * glyphBufferRowWidth + glyphPixel];
 
-			glyphPixelPen.color.components.R = originalColor.components.R * glyphPixelLevel;
-			glyphPixelPen.color.components.G = originalColor.components.G * glyphPixelLevel;
-			glyphPixelPen.color.components.B = originalColor.components.B * glyphPixelLevel;
-			ScreenDrawPixel(buffer, (PointS ) { pixel, line }, &glyphPixelPen);
+			// If level is zero it us useless to draw the pixer
+			if (glyphLevel != 0) {
+				glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, originalColor);
+				ScreenDrawPixel(buffer, (PointS ) { currentPixel, line }, &glyphPixelPen);
+			}
+		}
+
+		// From here all accesses to glyphBuffer should be aligned
+		for (; currentPixel < hEnd; glyphPixel += 4) {
+			// We read the 4 glyph levels from the glyph
+			UInt32 glyphLevels = *((UInt32*) &glyphBufferPtr[glyphLine * glyphBufferRowWidth + glyphPixel]);
+
+			// NB: Our system is little endian so the 1st level is now on the MSB of the 32bit int
+			// So we start with no right shift and we the increment the shift of 8 bits at each iteration
+			// First iteration we read 000000XX (1st glyph level in little endian), then 0000XX00, 00XX0000, XX000000 (4th glyph level)
+			BYTE i = 0;
+			while (i < 32 && currentPixel < hEnd) {
+				BYTE glyphLevel = (glyphLevels >> i) & 0xFF;
+
+				// If level is zero it us useless to draw the pixer
+				if (glyphLevel != 0) {
+					glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, originalColor);
+					ScreenDrawPixel(buffer, (PointS ) { currentPixel, line }, &glyphPixelPen);
+				}
+				// Better then using i = 0 .. 3 and multipling by 8
+				i += 8;
+				++currentPixel;
+			}
 		}
 	}
 }
@@ -112,7 +151,7 @@ void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, c
 			}
 
 			// TODO Fix 2 constant
-			for (UInt16 wPixel = hStart + drawnPixels; wPixel < (hEnd & 0x03); wPixel += packSize, drawnPixels += packSize) {
+			for (UInt16 wPixel = hStart + drawnPixels; wPixel < (hEnd & (~0x03)); wPixel += packSize, drawnPixels += packSize) {
 				pixelPoint.x = wPixel;
 				ScreenDrawPixelPack(buffer, pixelPoint, pen);
 			}
