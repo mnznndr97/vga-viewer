@@ -16,6 +16,11 @@
 extern UInt32 _currentLineAddr;
 extern BYTE _currentLinePrescaler;
 
+/// \brief Fix the font color using the glyph level provided
+/// \param glyphLevel Glyph level ranging from 0 to 64 (included)
+/// \param fontColor Color of the font
+/// \return Modified font color
+/// \remakrs The function only changes the alpha of the color to have a "better" result on our super scaled screen
 ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
 	// Simple level calculation. Our glyph bitmap levels range from 0 .. 64
 	float glyphPixelLevel = glyphLevel / 64.0f;
@@ -87,7 +92,7 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 			// We read the glyph level from the glyph
 			BYTE glyphLevel = glyphBufferPtr[glyphLine * glyphBufferRowWidth + glyphPixel];
 
-			// If level is zero it us useless to draw the pixer
+			// If level is zero it is useless to draw the pixer
 			if (glyphLevel != 0) {
 				glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, originalColor);
 				ScreenDrawPixel(buffer, (PointS ) { currentPixel, line }, &glyphPixelPen);
@@ -99,19 +104,19 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 			// We read the 4 glyph levels from the glyph
 			UInt32 glyphLevels = *((UInt32*) &glyphBufferPtr[glyphLine * glyphBufferRowWidth + glyphPixel]);
 
-			// NB: Our system is little endian so the 1st level is now on the MSB of the 32bit int
+			// NB: Our system is little endian so the 1st level is now on the LSB of the 32bit int
 			// So we start with no right shift and we the increment the shift of 8 bits at each iteration
 			// First iteration we read 000000XX (1st glyph level in little endian), then 0000XX00, 00XX0000, XX000000 (4th glyph level)
 			BYTE i = 0;
 			while (i < 32 && currentPixel < hEnd) {
 				BYTE glyphLevel = (glyphLevels >> i) & 0xFF;
 
-				// If level is zero it us useless to draw the pixer
+				// If level is zero it' s useless to draw the pixer
 				if (glyphLevel != 0) {
 					glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, originalColor);
 					ScreenDrawPixel(buffer, (PointS ) { currentPixel, line }, &glyphPixelPen);
 				}
-				// Better then using i = 0 .. 3 and multipling by 8
+				// Better than using i = 0 .. 3 and multipling by 8
 				i += 8;
 				++currentPixel;
 			}
