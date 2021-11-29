@@ -34,3 +34,10 @@ void* ralloc(size_t size) {
 
 	return dataPtr;
 }
+
+void rfree(void* ptr, size_t size) {
+    // Super simple deallocation mechanism: decrement current pointer and increment remaining counter
+    // This is not thread safe for the moment and no checks are performed
+    s_current -= size;
+    s_remaining += size;
+}

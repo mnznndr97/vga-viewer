@@ -85,8 +85,11 @@ extern VideoFrameInfo VideoFrame800x600at60Hz;
 /// Creates a new ScreenBuffer from VGA initialization parameters and registers it as a working buffer
 /// @param visualizationInfo VGA output parameters
 /// @param screenBuffer Filled ScreenBuffer struct with the relative data
-/// @return VGA status
+/// @return VGA operation status
 VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, ScreenBuffer **screenBuffer);
+/// Releases all the resources associated with the ScreenbBuffer instance
+/// @return VGA operation status
+VGAError VGAReleaseScreenBuffer(ScreenBuffer* screenBuffer);
 
 /// Dumps the active buffer timers frequencies
 VGAError VGADumpTimersFrequencies();
@@ -95,12 +98,5 @@ VGAError VGAStartOutput();
 VGAError VGASuspendOutput();
 VGAError VGAResumeOutput();
 VGAError VGAStopOutput();
-
-/**
- * @brief Get the sum of all the pixels count in a Timing instance
- *
- * @return -1 if pointer is invalid, pixel sum otherwhise
- */
-Int32 VGATimingGetSum(const Timing *timing);
 
 #endif /* INC_VGA_VGASCREENBUFFER_H_ */

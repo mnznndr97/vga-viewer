@@ -20,4 +20,8 @@
 /// \remarks The allocator is not thread safe
 void* ralloc(size_t size);
 
+/// Deallocates a block of data from the ram
+/// \param ptr Pointer of the block
+/// \param size Size of the block to be released in bytes
+void rfree(void* ptr, size_t size);
 #endif /* INC_RAM_H_ */
