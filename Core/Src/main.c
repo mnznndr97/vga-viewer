@@ -38,11 +38,16 @@
 #include <screen/screen.h>
 #include <ram.h>
 
+#include <app/color_palette.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef enum _MainApplicationRunning {
+	AppIdle, AppPalette,
+} MainApplicationRunning;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -96,6 +101,8 @@ static uint8_t _userCommand = 0;
 static volatile uint8_t _userCommandReceivedFlag = 0;
 
 static UInt32 _vgaCheckLastTick = 0;
+
+static MainApplicationRunning _currentRunningApp = AppIdle;
 
 /* USER CODE END PV */
 
@@ -864,59 +871,60 @@ void HandleUserInput() {
 	_userCommandReceivedFlag = 0;
 
 	IssueUserInputReadWithIT();
+	if (receivedCommand == '\e') {
+		_currentRunningApp = AppIdle;
 
-	switch (receivedCommand) {
-	case 'm': {
 		Pen currentPen = { 0 };
-
-		/*currentPen.color.components.R = 0xFF;
-		 ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
-
-		 currentPen.color.argb = 0x00FFFFFF;
-		 ScreenDrawString(_screenBuffer, "Ciao!", (PointS ) { 125, 75 }, &currentPen);*/
-
 		currentPen.color.argb = 0xff000000;
-		ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
-
-		currentPen.color.argb = 0xff008080;
-		//ScreenDrawRectangle(_screenBuffer, (PointS ) { 55, 128 }, (SizeS ) { 300, 22 }, &currentPen);
-
-		currentPen.color.argb = 0xffffc945;
-		ScreenDrawString(_screenBuffer, "?pjg_\\56%", (PointS ) { 55, 130 }, &currentPen);
-
-	}
-		break;
-	case '\e': {
-		Pen currentPen = { };
-		currentPen.color.components.A = 0xFF;
-		for (size_t line = 0; line < 300; line++) {
-			for (size_t pixel = 0; pixel < 400; pixel++) {
-				currentPen.color.components.R = (pixel % 4) * 64;
-				ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
-			}
+		ScreenClear(_screenBuffer, &currentPen);
+	} else if (_currentRunningApp != AppIdle) {
+		switch (_currentRunningApp) {
+		case AppPalette:
+			AppPaletteProcessInput(receivedCommand);
+			break;
 		}
-		//CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
+	} else {
+		switch (receivedCommand) {
+		case 'm': {
+			Pen currentPen = { 0 };
 
-	}
-		break;
-	case 'p': {
-		Pen currentPen = { };
-		ScreenBuffer *screenBuffer = _screenBuffer;
+			/*currentPen.color.components.R = 0xFF;
+			 ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
 
-		currentPen.color.components.A = 0xFF;
-		float bluDivisions = screenBuffer->screenSize.height / 256.0f;
-		float greenDivisions = screenBuffer->screenSize.width / 256.0f;
-		for (size_t line = 0; line < screenBuffer->screenSize.height; line++) {
-			currentPen.color.components.B = (BYTE) (line / bluDivisions);
+			 currentPen.color.argb = 0x00FFFFFF;
+			 ScreenDrawString(_screenBuffer, "Ciao!", (PointS ) { 125, 75 }, &currentPen);*/
 
-			for (size_t pixel = 0; pixel < screenBuffer->screenSize.width; pixel++) {
-				currentPen.color.components.G = (BYTE) (pixel / greenDivisions);
-				ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
+			currentPen.color.argb = 0xff000000;
+			ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
+
+			currentPen.color.argb = 0xff008080;
+			//ScreenDrawRectangle(_screenBuffer, (PointS ) { 55, 128 }, (SizeS ) { 300, 22 }, &currentPen);
+
+			currentPen.color.argb = 0xffffc945;
+			ScreenDrawString(_screenBuffer, "?pjg_\\56%", (PointS ) { 55, 130 }, &currentPen);
+
+		}
+			break;
+		case '\e': {
+			Pen currentPen = { };
+			currentPen.color.components.A = 0xFF;
+			for (size_t line = 0; line < 300; line++) {
+				for (size_t pixel = 0; pixel < 400; pixel++) {
+					currentPen.color.components.R = (pixel % 4) * 64;
+					ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
+				}
 			}
+			//CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
+
+		}
+			break;
+		case 'p':
+			_currentRunningApp = AppPalette;
+			AppPaletteInitialize(_screenBuffer);
+			break;
 		}
 	}
-		break;
-	}
+
 }
 
 void IssueUserInputReadWithIT() {
@@ -1159,12 +1167,12 @@ void Error_Handler(void) {
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
+void assert_failed(uint8_t* file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-                      /* User can add his own implementation to report the file name and line number,
-                       ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+    /* USER CODE BEGIN 6 */
+                        /* User can add his own implementation to report the file name and line number,
+                         ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+                         /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 

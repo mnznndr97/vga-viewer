@@ -61,6 +61,7 @@ typedef struct _ScreenBuffer {
 
 extern void Error_Handler(void);
 
+void ScreenClear(const ScreenBuffer* buffer, const Pen* pen);
 void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, const Pen *pen);
 void ScreenDrawString(const ScreenBuffer *buffer, const char* str, PointS point, const Pen *pen);
 

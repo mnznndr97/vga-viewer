@@ -62,6 +62,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Src\app\color_palette.c" />
     <ClCompile Include="core\src\assertion.c" />
     <ClCompile Include="Core\Src\cmsis_extensions.c" />
     <ClCompile Include="Core\Src\console.c" />
@@ -114,6 +115,7 @@
     <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\timers.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Inc\app\color_palette.h" />
     <ClInclude Include="core\inc\assertion.h" />
     <ClInclude Include="Core\Inc\cmsis_extensions.h" />
     <ClInclude Include="Core\Inc\console.h" />

@@ -28,7 +28,7 @@ ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
 	// To better display the glyph, I assumed that is better to directly work only on the alpha value
 	// In our case, the font bitmaps are exported from Window$. Some of the pixels at the border of the glyph
 	// may have a level that is near zero (but not zero). If we modify the RGB components leaving the alpha unaltered
-	// for these pixels, we get on the display some black pixels. So i think that is better to only remap the alpha level using 
+	// for these pixels, we get on the display some black pixels. So i think that is better to only remap the alpha level using
 	// the glyph level
 	fontColor.components.A = fontColor.components.A * glyphPixelLevel;
 	return fontColor;
@@ -48,7 +48,7 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 
 	if (charMetrics->bufferSize <= 0) {
 		// Character has no graphics associated. No need to draw it
-		// The character may still have some enclosing box pixels but 
+		// The character may still have some enclosing box pixels but
 		// we have not the need to "display" these pixels at the moment
 		return;
 	}
@@ -66,7 +66,7 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 	} else if (glyphOriginY < 0) {
 		// Glyph is partially outside the screen. We simply start drawing from the 0 coordinate
 		// ignoring the hidden lines
-		// glyphOriginY is smaller that 
+		// glyphOriginY is smaller that
 		glyphLine = glyphLine - (BYTE) glyphOriginY;
 		glyphOriginY = 0;
 	}
@@ -139,6 +139,12 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 	}
 }
 
+// ##### Public Function definitions #####
+
+void ScreenClear(const ScreenBuffer *buffer, const Pen *pen) {
+	ScreenDrawRectangle(buffer, (PointS ) { 0 }, buffer->screenSize, pen);
+}
+
 void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, const Pen *pen) {
 	int hStart = MAX(point.x, 0);
 	int hEnd = MIN(point.x + size.width, buffer->screenSize.width);
@@ -196,14 +202,14 @@ void ScreenDrawString(const ScreenBuffer *buffer, const char *str, PointS point,
 	}
 
 	// Super simple loop here
-	// For each character in our string we draw it's glyph on the screen and we move the point forward 
+	// For each character in our string we draw it's glyph on the screen and we move the point forward
 	GlyphMetrics charMetrics;
 	for (int i = 0; i < stringLength; i++) {
 		char character = str[i];
 		ScreenDrawCharacter(buffer, character, point, &charMetrics, pen);
 
 		// We move our "drawing cursor" forward using the font specifications
-		// The font also has a Y increment but we are not interested 
+		// The font also has a Y increment but we are not interested
 		point.x += charMetrics.cellIncX;
 	}
 }
