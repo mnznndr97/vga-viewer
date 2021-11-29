@@ -20,7 +20,7 @@ extern BYTE _currentLinePrescaler;
 /// \param glyphLevel Glyph level ranging from 0 to 64 (included)
 /// \param fontColor Color of the font
 /// \return Modified font color
-/// \remakrs The function only changes the alpha of the color to have a "better" result on our super scaled screen
+/// \remarks The function only changes the alpha of the color to have a "better" result on our super scaled screen
 ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
 	// Simple level calculation. Our glyph bitmap levels range from 0 .. 64
 	float glyphPixelLevel = glyphLevel / 64.0f;
@@ -35,12 +35,21 @@ ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
 }
 
 void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS point, GlyphMetrics *charMetrics, const Pen *pen) {
+	// We are currently supporting only simple ASCII characters
+	if (character < 0 || character >= 128) {
+		// Let's just clear the metrics since they are used from the caller to increment the drawing point
+		charMetrics = NULL;
+		return;
+	}
+
 	// First we get all the information about our character
 	PCBYTE glyphBufferPtr;
 	GetGlyphOutline(character, charMetrics, &glyphBufferPtr);
 
 	if (charMetrics->bufferSize <= 0) {
-		// Character has no graphics associated
+		// Character has no graphics associated. No need to draw it
+		// The character may still have some enclosing box pixels but 
+		// we have not the need to "display" these pixels at the moment
 		return;
 	}
 
@@ -49,10 +58,15 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 	Int16 glyphOriginY = point.y + charMetrics->glyphOrigin.y;
 
 	// If glyph is outside the screen (before origin) we need to skip some lines
-	// TODO: check byte cast
 	BYTE glyphLine = 0;
 	BYTE glyphPixelCache = 0;
-	if (glyphOriginY < 0) {
+	if (glyphOriginY < 0 && (-glyphOriginY) >= charMetrics->blackBoxY) {
+		// Glyph is totally outside the vertical position of the screen. We can exit
+		return;
+	} else if (glyphOriginY < 0) {
+		// Glyph is partially outside the screen. We simply start drawing from the 0 coordinate
+		// ignoring the hidden lines
+		// glyphOriginY is smaller that 
 		glyphLine = glyphLine - (BYTE) glyphOriginY;
 		glyphOriginY = 0;
 	}
@@ -69,24 +83,25 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 	int hEnd = MIN(glyphOriginX + charMetrics->blackBoxX, buffer->screenSize.width);
 	int vEnd = MIN(glyphOriginY + charMetrics->blackBoxY, buffer->screenSize.height);
 
-	// We need to copy the pen since each pixel must be different
+	// We need to copy the pen since each pixel color will be potentially different
 	Pen glyphPixelPen = *pen;
-	ARGB8Color originalColor = glyphPixelPen.color;
 
 	// The row length of the buffer is a multiple of a Word (32bit), so it must be multiple of 4
 	// We simply add 3 to our box width and we clear the 2 LSBs. In this case all the numbers where the
-	// LSB are != 0b00 are rounded to the next WORD-ligned number
+	// LSB are != 0b00 are rounded to the next WORD-aligned number
 	BYTE glyphBufferRowWidth = (charMetrics->blackBoxX + 3) & (~0x3);
+	// Make sure we are doing fine with our maths
 	DebugAssert(glyphBufferRowWidth * charMetrics->blackBoxY == charMetrics->bufferSize);
 
 	// Classic line loop
 	for (UInt16 line = vStart; line < vEnd; ++line, ++glyphLine) {
-		// We recalculate the current starting pixel of the glyph in case we were starting out of the screen
+		// We recalculate the current starting pixel of the glyph
 		BYTE glyphPixel = glyphPixelCache;
 
 		// We begin our drawing loop
 		UInt16 currentPixel = hStart;
 		// Since glyph rows are aligned at word boundaries, we can read 4 levels at the time
+		// to save little time
 		// We just need to make sure we are not starting from an unaligned address
 		for (; (glyphPixel & 0x3) != 0 && currentPixel < hEnd; ++currentPixel, ++glyphPixel) {
 			// We read the glyph level from the glyph
@@ -94,7 +109,7 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 
 			// If level is zero it is useless to draw the pixer
 			if (glyphLevel != 0) {
-				glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, originalColor);
+				glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, pen->color);
 				ScreenDrawPixel(buffer, (PointS ) { currentPixel, line }, &glyphPixelPen);
 			}
 		}
@@ -113,7 +128,7 @@ void ScreenDrawCharacter(const ScreenBuffer *buffer, char character, PointS poin
 
 				// If level is zero it' s useless to draw the pixer
 				if (glyphLevel != 0) {
-					glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, originalColor);
+					glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, pen->color);
 					ScreenDrawPixel(buffer, (PointS ) { currentPixel, line }, &glyphPixelPen);
 				}
 				// Better than using i = 0 .. 3 and multipling by 8
@@ -171,7 +186,8 @@ void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, c
 }
 
 void ScreenDrawString(const ScreenBuffer *buffer, const char *str, PointS point, const Pen *pen) {
-	// TODO: I know this is not safe :(
+	// This is not safe but our project is just display some stuff on the screen, there is not
+	// sensible data in it. It may still be hacked though
 	int stringLength = strlen(str);
 
 	if (stringLength <= 0) {
@@ -179,14 +195,16 @@ void ScreenDrawString(const ScreenBuffer *buffer, const char *str, PointS point,
 		return;
 	}
 
-	PointS currentDrawingPoint = point;
+	// Super simple loop here
+	// For each character in our string we draw it's glyph on the screen and we move the point forward 
 	GlyphMetrics charMetrics;
 	for (int i = 0; i < stringLength; i++) {
 		char character = str[i];
+		ScreenDrawCharacter(buffer, character, point, &charMetrics, pen);
 
-		ScreenDrawCharacter(buffer, character, currentDrawingPoint, &charMetrics, pen);
-
-		currentDrawingPoint.x += charMetrics.cellIncX;
+		// We move our "drawing cursor" forward using the font specifications
+		// The font also has a Y increment but we are not interested 
+		point.x += charMetrics.cellIncX;
 	}
 }
 
