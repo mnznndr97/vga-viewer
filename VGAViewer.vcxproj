@@ -42,12 +42,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <NMakePreprocessorDefinitions>USE_HAL_DRIVER;STM32F407xx;__CC_ARM;CUSTOMASSERT;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
-    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)FATFS\Target;$(ProjectDir)Middlewares\Third_Party\FatFs\src;$(ProjectDir)FATFS\App;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
     <NMakePreprocessorDefinitions>USE_HAL_DRIVER;STM32F407xx;__CC_ARM;CUSTOMASSERT;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
-    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)FATFS\Target;$(ProjectDir)Middlewares\Third_Party\FatFs\src;$(ProjectDir)FATFS\App;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>
@@ -74,6 +74,7 @@
     <ClCompile Include="core\src\main.c" />
     <ClCompile Include="Core\Src\ram.c" />
     <ClCompile Include="core\src\screen\screen.c" />
+    <ClCompile Include="Core\Src\sd\sd.c" />
     <ClCompile Include="core\src\stm32f4xx_hal_msp.c" />
     <ClCompile Include="Core\Src\stm32f4xx_hal_timebase_tim.c" />
     <ClCompile Include="core\src\stm32f4xx_it.c" />
@@ -99,10 +100,17 @@
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_pwr_ex.c" />
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_rcc.c" />
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_rcc_ex.c" />
+    <ClCompile Include="Drivers\STM32F4xx_HAL_Driver\Src\stm32f4xx_hal_spi.c" />
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_tim.c" />
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_tim_ex.c" />
     <ClCompile Include="drivers\stm32f4xx_hal_driver\src\stm32f4xx_hal_uart.c" />
+    <ClCompile Include="FATFS\App\fatfs.c" />
+    <ClCompile Include="FATFS\Target\user_diskio.c" />
     <ClCompile Include="Makefile" />
+    <ClCompile Include="Middlewares\Third_Party\FatFs\src\diskio.c" />
+    <ClCompile Include="Middlewares\Third_Party\FatFs\src\ff.c" />
+    <ClCompile Include="Middlewares\Third_Party\FatFs\src\ff_gen_drv.c" />
+    <ClCompile Include="Middlewares\Third_Party\FatFs\src\option\syscall.c" />
     <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os2.c" />
     <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\croutine.c" />
     <ClCompile Include="Middlewares\Third_Party\FreeRTOS\Source\event_groups.c" />
@@ -128,6 +136,7 @@
     <ClInclude Include="core\inc\main.h" />
     <ClInclude Include="Core\Inc\ram.h" />
     <ClInclude Include="core\inc\screen\screen.h" />
+    <ClInclude Include="Core\Inc\sd\sd.h" />
     <ClInclude Include="core\inc\stm32f4xx_hal_conf.h" />
     <ClInclude Include="core\inc\stm32f4xx_it.h" />
     <ClInclude Include="core\inc\typedefs.h" />
@@ -177,9 +186,17 @@
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_pwr_ex.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_rcc.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_rcc_ex.h" />
+    <ClInclude Include="Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_spi.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_tim.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_tim_ex.h" />
     <ClInclude Include="drivers\stm32f4xx_hal_driver\inc\stm32f4xx_hal_uart.h" />
+    <ClInclude Include="FATFS\App\fatfs.h" />
+    <ClInclude Include="FATFS\Target\ffconf.h" />
+    <ClInclude Include="FATFS\Target\user_diskio.h" />
+    <ClInclude Include="Middlewares\Third_Party\FatFs\src\diskio.h" />
+    <ClInclude Include="Middlewares\Third_Party\FatFs\src\ff.h" />
+    <ClInclude Include="Middlewares\Third_Party\FatFs\src\ff_gen_drv.h" />
+    <ClInclude Include="Middlewares\Third_Party\FatFs\src\integer.h" />
     <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os.h" />
     <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\cmsis_os2.h" />
     <ClInclude Include="Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2\freertos_mpool.h" />
