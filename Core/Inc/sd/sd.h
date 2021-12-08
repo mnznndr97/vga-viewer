@@ -13,7 +13,13 @@
 #define INC_SD_SD_H_
 
 typedef enum _SDStatus {
-	SDStatusOk = 0
+	SDStatusOk = 0,
+    /// An unknown device is responding over the SPI interface
+    SDStatusNotSDCard = -1,
+    /// SD card voltage is not supported
+    SDStatusVoltageNotSupported = -2,
+    /// Power up cycle not completed
+    SDStatusPowerUpNotCompleted = -3
 } SDStatus;
 
 /// Initialize the SD SPI interface using the specified devices
