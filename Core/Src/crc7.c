@@ -16,18 +16,18 @@ void Crc7Initialize() {
 
 	// Let's pre-generate the 256 bytes -> CRC map
 	for (int i = 0; i < 256; ++i) {
-		CRCTable[i] = (i & 0x80) ? i ^ Poly : i;
+		CRCTable[i] = (uint8_t) ((i & 0x80) ? i ^ Poly : i);
 
 		// Data polynomial, per SD standard, must be multiplied by x ^ 7
 		// So we just apply the CRC xor shift algorithm 7 times
 		for (int j = 1; j < 8; ++j) {
 			CRCTable[i] <<= 1;
-			if (CRCTable[i] & 0x80)
-				CRCTable[i] ^= Poly;
+			if ((CRCTable[i] & 0x80) != 0)
+				CRCTable[i] = (uint8_t) (CRCTable[i] ^ Poly);
 		}
 
 		// CRC7 MSB should always be 0 per algorithm
-		assert(CRCTable[i] & 0x80 == 0);
+		assert((CRCTable[i] & 0x80) == 0);
 	}
 }
 
@@ -37,6 +37,7 @@ uint8_t Crc7Add(uint8_t crc, uint8_t data) {
 
 	// We should then perform the * x^7 polynomial multiplication, which eventually result in a simple dereference of our pre-calculated
 	// CRC value at the newly calculated value
-	return CRCTable[(crc << 1) ^ data];
+	uint8_t index = (uint8_t) ((crc << 1) ^ data);
+	return CRCTable[index];
 }
 

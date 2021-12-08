@@ -285,6 +285,7 @@ int main(void) {
 	// DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 	// We need to disable the io buffering to have the data directly sended
 	setvbuf(stdout, NULL, _IONBF, 0);
+	Crc7Initialize();
 
 	SET_BIT(DBGMCU->APB1FZ, DBGMCU_APB1_FZ_DBG_TIM4_STOP);
 	SET_BIT(SCB->CCR, SCB_CCR_UNALIGN_TRP_Msk);
@@ -330,6 +331,7 @@ int main(void) {
 
 	SDInitialize(GPIOC, GPIO_PIN_1, &hspi2);
 
+	SDTryConnect();
 	while (true) {
 
 	}

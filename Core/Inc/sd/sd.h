@@ -26,4 +26,8 @@ SDStatus SDInitialize(GPIO_TypeDef *powerGPIO, UInt16 powerPin, SPI_HandleTypeDe
 /// \return Operation status
 SDStatus SDPerformPowerCycle();
 
+/// @brief Tries to open the SPI interface of an SD card
+/// @return Status of the operation
+SDStatus SDTryConnect();
+
 #endif /* INC_SD_SD_H_ */
