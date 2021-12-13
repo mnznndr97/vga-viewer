@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <inttypes.h>
+#include <assert.h>
 
 void DebugAssert(bool condition);
 

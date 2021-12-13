@@ -6,8 +6,11 @@
  */
 
 #include <sd/sd.h>
-#include <crc7.h>
+#include <sd/csd.h>
+#include <crc/crc7.h>
+#include <crc/crc16.h>
 #include <stdio.h>
+#include <string.h>
 #include <assertion.h>
 
 extern void Error_Handler();
@@ -19,336 +22,612 @@ extern void Error_Handler();
 /// Physical Layer Simplified Specification Version 8.00 [Section 7.3.2]
 #define SD_MAX_RESPONSE_SIZE 5
 
+#define SD_DATA_BLOCK_SIZE 512
+#define SD_CRC_SIZE 16
+
+/// Voltage Supplied (VHS) parameter for CMD8
+#define SD_CMD8_VHS_2p7To3p6 (0x1 << 8)
+
+#define SD_CMD59_CRC_ON 0x1
+#define SD_CMD59_CRC_OFF 0x0
+
+/// Custom defined generic timeout for a command response
+#define SD_RESPONSE_TIMEOUT 10000
+/// As specified in the Physical Layer Simplified Specification Version 8.00 [Section 4.2.3, Card Initialization and Identification Process]
+/// we should use a 1sec timeout when waiting the device to become ready
+#define SD_ACMD41_LOOP_TIMEOUT 1000
+
 typedef enum _SDCommand {
-    /// Resets the SD memory card
-    SDCMD0GoIdleState = 0,
-    /// Sends SD
-    SDCMD8SendIfCondition = 8,
-    /// Reads the OCR of a card.
-    /// Response is R3
-    SDCMD58ReadOrc = 58
+	/// Resets the SD memory card
+	SDCMD0GoIdleState = 0,
+	/// Sends SD
+	SDCMD8SendIfCondition = 8,
+	/// Asks the selected card to send it's Card Specific Data
+	SDCMD9SendCSD = 9,
+	/// Defines to the card that the next command is an application specific comamnd
+	/// Response is R1
+	SDCMD55AppCmd = 55,
+	SDCMD56GenCmd = 56,
+	/// Reads the OCR of a card.
+	/// Response is R3
+	SDCMD58ReadOrc = 58,
+	/// Enables or disables the crc option
+	SDCMD59CRCOnOff = 59
 } SDCommand;
 
-static GPIO_TypeDef* _powerGPIO = NULL;
-static UInt16 _powerPin = 0;
-
-static GPIO_TypeDef* _nssGPIO = NULL;
-static UInt16 _nssPin = 0;
-static SPI_HandleTypeDef* _spiHandle = NULL;
-
-static BYTE _responseBuffer[SD_MAX_RESPONSE_SIZE];
-
-/// OCR register definition
-/// \remarks The struct is layed out as if read in little endian from an int 32
-/// This is what happens when casting the result buffer to an R3 pointer
-typedef struct _OCRRegister {
-    /********* UInt32 LSB -> Bits from 31 to 24 ******/
-    /// Only USH-I card support this bit
-    UInt32 Switch1p8Accepted : 1; // Bit 24
-    UInt32 Reserved : 2; // Bit 25-26
-    /// Over 2TB support Status. Only SDUC card support this bit
-    UInt32 CO2T : 1; // Bit 27
-    UInt32 Reserved2 : 1; // Bit 28
-    UInt32 UHSIICardStatus : 1; // Bit 29
-    /// Card Capacity Status. This bit is valid only whe the canrd power up status bit is set
-    UInt32 CCS : 1; // Bit 30
-    /// Power up status. Set to low if the card has not finished the power up routine
-    UInt32 PowerUpStatus : 1; // Bit 31
-
-    /********* UInt32 byte 2 -> Bits from 23 to 16 ******/
-    UInt32 v2p8tov2p9 : 1; // Bit 16
-    UInt32 v2p9tov3p0 : 1; // Bit 17
-    UInt32 v3p0tov3p1 : 1; // Bit 18
-    UInt32 v3p1tov3p2 : 1; // Bit 19
-    UInt32 v3p2tov3p3 : 1; // Bit 20
-    UInt32 v3p3tov3p4 : 1; // Bit 21
-    UInt32 v3p4tov3p5 : 1; // Bit 22
-    UInt32 v3p5tov3p6 : 1; // Bit 23
-
-    /********* UInt32 byte 3 -> Bits from 15 to 8 ******/
-    UInt32 VddWindowReserved1 : 7; // Bits 14 - 8
-    UInt32 v2p7tov2p8 : 1; // Bit 15
-
-    /********* UInt32 MSB -> Bits from 7 to 0 ******/
-    UInt32 VddWindowReserved : 8; // Bits 7 - 0
-
-} OCRRegister;
-
-typedef struct _ResponseR1 {
-    BYTE Idle : 1; // BIT 0
-    BYTE EraseReset : 1;
-    BYTE IllegalCommand : 1;
-    BYTE ComCrcError : 1;
-    BYTE EraseSequenceError : 1;
-    BYTE AddressError : 1;
-    BYTE ParamError : 1;
-    BYTE Reserved : 1; // BIT7
-} ResponseR1;
-
-typedef struct _ResponseR3 {
-    ResponseR1 R1;
-    OCRRegister OCR;
-} __attribute__((aligned(1), packed)) ResponseR3;
-
-typedef const ResponseR1* PCResponseR1;
-typedef const ResponseR3* PCResponseR3;
-
-/// Completly disables the SPI interface
-static void ShutdownSDSPIInterface() {
-    // We need to complety disable our SPI interface
-    // Let's follow the procedure indicate in the SPI chapter of RM0090 [Section 28.3.8]
-
-    /*
-     // Let's wait to have received the last data
-     while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_RXNE) == 0)
-     ;
-     // Let' s wait for a transfer to complete (we are in full duplex bidirectional mode)
-     while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_TXE) == 0)
-     ;
-     // Let' s wait for the channel to be freen
-     while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_BSY) == 1)
-     ;
-
-     */
-    __HAL_SPI_DISABLE(_spiHandle);
-
-    // We don't have to do anything with the CS signal for the moment
-}
+typedef enum _SDAppCommand {
+	/// Sends host capacity support information and activates the card initialization process.
+	/// Response is R1
+	SDACMD41SendOpCond = 41
+} SDAppCommand;
 
 /// Performs a single byte transaction on the SPI interface by writing an reading a byte
 /// \param data Data to write on the MOSI channel
 /// \return Data read from the SPI from the MISO channel
 /// \remarks To read a single byte to the SPI a dummy byte must be provided since we are the master
 /// initiating the transaction
-static BYTE PerformByteTransaction(BYTE data) {
-    // We write the byte into the data register. This will clear the TXE flag [RM0090 - Section 28.3.7]
-    _spiHandle->Instance->DR = data;
-
-    UInt32 srRegister = 0;
-    UInt32 spiStatusMsk = SPI_SR_TXE_Msk | SPI_SR_RXNE_Msk;
-
-    UInt32 supportedErrorMsk = SPI_SR_MODF_Msk | SPI_SR_OVR_Msk;
-    do {
-        srRegister = _spiHandle->Instance->SR;
-
-        // We should never get a FrameFormat error since is not used in standard SPI mode
-        if ((srRegister & SPI_SR_FRE_Msk) != 0)
-            Error_Handler();
-        // We should never get a CRC error since is should not be enabled
-        if ((srRegister & SPI_SR_CRCERR_Msk) != 0)
-            Error_Handler();
-        // We should never get an underrun error since is should not be used in SPI mode
-        if ((srRegister & SPI_SR_UDR_Msk) != 0)
-            Error_Handler();
-
-        if ((srRegister & supportedErrorMsk) != 0) {
-            // How to handle this situation?
-            Error_Handler();
-        }
-    } while ((srRegister & spiStatusMsk) != spiStatusMsk);
-
-    // We read the byte from the data register. This will clear the RXNE flag [RM0090 - Section 28.3.7]
-    return (BYTE)_spiHandle->Instance->DR;
-}
-
+static BYTE PerformByteTransaction(BYTE data);
 /// Reads a byte from the SPI interface by writing a dummy byte
 /// \return Data read from the SPI from the MISO channel
 /// \remarks To read a single byte to the SPI a dummy byte must be provided since we are the master
 /// initiating the transaction
-static BYTE ReadByte() {
-    BYTE data = PerformByteTransaction(SD_DUMMY_BYTE);
-    //*crc = Crc7Add(*crc, data);
-    return data;
-}
-
+static BYTE ReadByte();
 /// Writes a byte onto the SPI interface using the single byte transaction method and by ignoring the read value
 /// \param data Data to write on the MOSI channel
-static void WriteByte(BYTE val, BYTE* crc) {
-    *crc = Crc7Add(*crc, val);
-    PerformByteTransaction(val);
-}
-
-static BYTE SendCommand(BYTE command, UInt32 argument, BYTE responseLength) {
-    BYTE crc = CRC7_ZERO;
-    WriteByte(0x40 | command, &crc);
-    WriteByte((BYTE)(argument >> 24), &crc);
-    WriteByte((BYTE)(argument >> 16), &crc);
-    WriteByte((BYTE)(argument >> 8), &crc);
-    WriteByte((BYTE)(argument), &crc);
-
-    BYTE dataF = (BYTE)((crc << 1) | 0x1); // End bit
-    WriteByte(dataF, &crc); // We ignore this last crc
-
-    static_assert(sizeof(ResponseR1) == sizeof(BYTE));
-
-    // We start or read loop to get the first byte of the response
-    BYTE bytesRead = 0;
-    BYTE readValue;
-    do {
-        // Response bytes may need some iterations so each time we re-initialize the
-        readValue = ReadByte();
-    } while (readValue == SD_DUMMY_BYTE);
-
-    _responseBuffer[bytesRead++] = readValue;
-    // First byte is ALWAYS (per specification, Section 7.3.2.1 and except for SEND_STATUS) a R1 response
-
-    const ResponseR1* r1 = (const ResponseR1*)_responseBuffer;
-    DebugAssert(r1->Reserved == 0); // reserved should always be zero
-
-    if (r1->IllegalCommand || r1->ComCrcError) {
-        // Per specification, this is the only case where the card outputs only the
-        // first byte of the response
-        return bytesRead;
-    }
-
-    while (bytesRead < responseLength) {
-        readValue = ReadByte();
-        _responseBuffer[bytesRead++] = readValue;
-    }
-    return bytesRead;
-}
-
-static void SendCommand2(BYTE command, UInt32 argument) {
-    BYTE data1 = PerformByteTransaction(0x40 | command);
-    BYTE data2 = PerformByteTransaction((BYTE)(argument >> 24));
-    BYTE data3 = PerformByteTransaction((BYTE)(argument >> 16));
-    BYTE data4 = PerformByteTransaction((BYTE)(argument >> 8));
-    BYTE data5 = PerformByteTransaction((BYTE)(argument));
-    BYTE data6 = PerformByteTransaction((BYTE)(0x87));
-
-    static_assert(sizeof(ResponseR1) == sizeof(BYTE));
-
-    BYTE rcv1 = PerformByteTransaction(0xFF);
-    BYTE rcv2 = PerformByteTransaction(0xFF);
-    BYTE rcv3 = PerformByteTransaction(0xFF);
-    BYTE rcv4 = PerformByteTransaction(0xFF);
-    BYTE rcv5 = PerformByteTransaction(0xFF);
-    BYTE rcv6 = PerformByteTransaction(0xFF);
-    BYTE rcv7 = PerformByteTransaction(0xFF);
-    BYTE rcv8 = PerformByteTransaction(0xFF);
-
-    ResponseR1* r1 = (ResponseR1*)&rcv1;
-    ResponseR1* r2 = (ResponseR1*)&rcv2;
-    ResponseR1* r3 = (ResponseR1*)&rcv3;
-    ResponseR1* r4 = (ResponseR1*)&rcv4;
-    ResponseR1* r5 = (ResponseR1*)&rcv5;
-    ResponseR1* r6 = (ResponseR1*)&rcv6;
-    ResponseR1* r7 = (ResponseR1*)&rcv7;
-    ResponseR1* r8 = (ResponseR1*)&rcv8;
-}
-
-/// \brief Verifies the voltage level of our connected SD card by issuing a CMD58 as specified in the Physical Layer Specification
+static void WriteByte(BYTE val, BYTE *crc);
+/// Base implementation of single command transaction (request send + response).
+/// \param command Commadn to send
+/// \param argument Argumento of the command
+/// \param responseLength Length of the response to read
+/// \return Bytes received or error status (negative return)
+/// \remarks The function does not change the NSS signal
+static SBYTE PerformCommandTransaction(BYTE command, UInt32 argument, BYTE responseLength);
+/// Sends a generic command to the SD card
+/// @param command Command to send
+/// @param argument Argument of the command
+/// @param responseLength Length of the response to receive
+/// @return Status of the operation (bytes read if > 0, error if < 0)
+static SBYTE SendCommand(BYTE aCommand, UInt32 argument, BYTE responseLength);
+/// Sends an application specific command to the SD card [defined in Table 7-4]
+/// @param command Command to send
+/// @param argument Argument of the command
+/// @param responseLength Length of the response to receive
+/// @return Status of the operation (bytes read if > 0, error if < 0)
+static SBYTE SendAppCommand(BYTE aCommand, UInt32 argument, BYTE responseLength);
+/// Verifies the voltage level of our connected SD card by issuing a CMD8 as specified in the Physical Layer Specification
+/// This must be done immediatly after the CMD0. If the card responds with an illegal command, the card is 1.X version, >= 2.0 otherwhise
+static SDStatus CheckVddRange();
+/// Verifies the voltage level of our connected SD card by issuing a CMD58 as specified in the Physical Layer Specification
 /// @return Status of the operation
+static SDStatus VerifyVoltageLevel();
+/// Enables the CRC check of the communication
+/// @return Status of the operation0
+static SDStatus EnableCRC();
+/// Waits the card is ready by issuing a ACMD41 and waiting that idle state is zero
+/// @return Status of the operation
+static SDStatus SDWaitForReady();
+static SDStatus VerifyCardCapacityStatus();
+
+static SDStatus ReadDataBlock(UInt16 blockSize);
+static SDStatus ReadCSDRegister();
+
+// ##### Private Implementation #####
+
+static GPIO_TypeDef *_powerGPIO = NULL;
+static UInt16 _powerPin = 0;
+
+static GPIO_TypeDef *_nssGPIO = NULL;
+static UInt16 _nssPin = 0;
+static SPI_HandleTypeDef *_spiHandle = NULL;
+
+/// Static allocated buffer wherethe response will be read
+static BYTE _responseBuffer[SD_MAX_RESPONSE_SIZE];
+
+/// Static allocated buffer where a data block will be read togheter with the related crc
+static BYTE _dataBlockCrcBuffer[SD_DATA_BLOCK_SIZE + SD_CRC_SIZE];
+static SDDescription _attachedSdCard;
+
+/// OCR register definition
+/// \remarks The struct is layed out as if read in little endian from an int 32
+/// This is what happens when casting the result buffer to an R3 pointer
+typedef struct _OCRRegister {
+	/********* UInt32 LSB -> Bits from 31 to 24 ******/
+	/// Only USH-I card support this bit
+	UInt32 Switch1p8Accepted :1; // Bit 24
+	UInt32 Reserved :2; // Bit 25-26
+	/// Over 2TB support Status. Only SDUC card support this bit
+	UInt32 CO2T :1; // Bit 27
+	UInt32 Reserved2 :1; // Bit 28
+	UInt32 UHSIICardStatus :1; // Bit 29
+	/// Card Capacity Status. This bit is valid only whe the canrd power up status bit is set
+	UInt32 CCS :1; // Bit 30
+	/// Power up status. Set to low if the card has not finished the power up routine
+	UInt32 PowerUpStatus :1; // Bit 31
+
+	/********* UInt32 byte 2 -> Bits from 23 to 16 ******/
+	UInt32 v2p8tov2p9 :1; // Bit 16
+	UInt32 v2p9tov3p0 :1; // Bit 17
+	UInt32 v3p0tov3p1 :1; // Bit 18
+	UInt32 v3p1tov3p2 :1; // Bit 19
+	UInt32 v3p2tov3p3 :1; // Bit 20
+	UInt32 v3p3tov3p4 :1; // Bit 21
+	UInt32 v3p4tov3p5 :1; // Bit 22
+	UInt32 v3p5tov3p6 :1; // Bit 23
+
+	/********* UInt32 byte 3 -> Bits from 15 to 8 ******/
+	UInt32 VddWindowReserved1 :7; // Bits 14 - 8
+	UInt32 v2p7tov2p8 :1; // Bit 15
+
+	/********* UInt32 MSB -> Bits from 7 to 0 ******/
+	UInt32 VddWindowReserved :8; // Bits 7 - 0
+
+} OCRRegister;
+
+typedef struct _ResponseR1 {
+	BYTE Idle :1; // BIT 0
+	BYTE EraseReset :1;
+	BYTE IllegalCommand :1;
+	BYTE ComCrcError :1;
+	BYTE EraseSequenceError :1;
+	BYTE AddressError :1;
+	BYTE ParamError :1;
+	BYTE Reserved :1; // BIT7
+} ResponseR1;
+
+typedef struct _ResponseR3 {
+	ResponseR1 R1;
+	OCRRegister OCR;
+} __attribute__((aligned(1), packed)) ResponseR3;
+
+typedef const ResponseR1 *PCResponseR1;
+typedef const ResponseR3 *PCResponseR3;
+
+/// Completly disables the SPI interface
+static void ShutdownSDSPIInterface() {
+	// We need to complety disable our SPI interface
+	// Let's follow the procedure indicate in the SPI chapter of RM0090 [Section 28.3.8]
+
+	/*
+	 // Let's wait to have received the last data
+	 while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_RXNE) == 0)
+	 ;
+	 // Let' s wait for a transfer to complete (we are in full duplex bidirectional mode)
+	 while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_TXE) == 0)
+	 ;
+	 // Let' s wait for the channel to be freen
+	 while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_BSY) == 1)
+	 ;
+
+	 */
+	__HAL_SPI_DISABLE(_spiHandle);
+
+	// We don't have to do anything with the CS signal for the moment
+}
+
+static BYTE PerformByteTransaction(BYTE data) {
+	// We write the byte into the data register. This will clear the TXE flag [RM0090 - Section 28.3.7]
+	_spiHandle->Instance->DR = data;
+
+	UInt32 srRegister = 0;
+	UInt32 spiStatusMsk = SPI_SR_TXE_Msk | SPI_SR_RXNE_Msk;
+
+	UInt32 supportedErrorMsk = SPI_SR_MODF_Msk | SPI_SR_OVR_Msk;
+	do {
+		srRegister = _spiHandle->Instance->SR;
+
+		// We should never get a FrameFormat error since is not used in standard SPI mode
+		if ((srRegister & SPI_SR_FRE_Msk) != 0)
+			Error_Handler();
+		// We should never get a CRC error since is should not be enabled
+		if ((srRegister & SPI_SR_CRCERR_Msk) != 0)
+			Error_Handler();
+		// We should never get an underrun error since is should not be used in SPI mode
+		if ((srRegister & SPI_SR_UDR_Msk) != 0)
+			Error_Handler();
+
+		if ((srRegister & supportedErrorMsk) != 0) {
+			// How to handle this situation?
+			Error_Handler();
+		}
+	} while ((srRegister & spiStatusMsk) != spiStatusMsk);
+
+	// We read the byte from the data register. This will clear the RXNE flag [RM0090 - Section 28.3.7]
+	return (BYTE) _spiHandle->Instance->DR;
+}
+
+static BYTE ReadByte() {
+	BYTE data = PerformByteTransaction(SD_DUMMY_BYTE);
+	//*crc = Crc7Add(*crc, data);
+	return data;
+}
+
+static void WriteByte(BYTE val, BYTE *crc) {
+	*crc = Crc7Add(*crc, val);
+	PerformByteTransaction(val);
+}
+
+static SBYTE PerformCommandTransaction(BYTE command, UInt32 argument, BYTE responseLength) {
+
+	BYTE crc = CRC7_ZERO;
+	WriteByte(0x40 | command, &crc);
+	WriteByte((BYTE) (argument >> 24), &crc);
+	WriteByte((BYTE) (argument >> 16), &crc);
+	WriteByte((BYTE) (argument >> 8), &crc);
+	WriteByte((BYTE) (argument), &crc);
+
+	BYTE dataF = (BYTE) ((crc << 1) | 0x1); // End bit
+	WriteByte(dataF, &crc); // We ignore this last crc
+
+	static_assert(sizeof(ResponseR1) == sizeof(BYTE));
+	DebugAssert(responseLength > 0);
+
+	// We start or read loop to get the first byte of the response
+	BYTE bytesRead = 0;
+	BYTE readValue;
+	UInt32 startTick = HAL_GetTick();
+	do {
+		// Response bytes may need some iterations so each time we re-initialize the
+		readValue = ReadByte();
+	} while (readValue == SD_DUMMY_BYTE && ((HAL_GetTick() - startTick) < SD_RESPONSE_TIMEOUT));
+
+	// We have not received an answer (the first bit of a response is always zero)
+	if (readValue == SD_DUMMY_BYTE) {
+		return SDStatusCommunicationTimeout;
+	}
+
+	_responseBuffer[bytesRead++] = readValue;
+	// First byte is ALWAYS (per specification, Section 7.3.2.1 and except for SEND_STATUS) a R1 response
+
+	const ResponseR1 *r1 = (const ResponseR1*) _responseBuffer;
+	DebugAssert(r1->Reserved == 0); // reserved should always be zero
+
+	if (r1->IllegalCommand || r1->ComCrcError) {
+		// Per specification, this is the only case where the card outputs only the
+		// first byte of the response
+		return (SBYTE) bytesRead;
+	}
+
+	while (bytesRead < responseLength) {
+		readValue = ReadByte();
+		_responseBuffer[bytesRead++] = readValue;
+	}
+	return (SBYTE) bytesRead;
+}
+
+static SBYTE SendCommand(BYTE command, UInt32 argument, BYTE responseLength) {
+	// Let's select the SPI by asserting LOW the NSS pin
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+
+	SBYTE bytesRead = PerformCommandTransaction(command, argument, responseLength);
+
+	// Let's deselect the SPI by asserting HIGH the NSS pin
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+	return bytesRead;
+}
+
+static SBYTE SendAppCommand(BYTE aCommand, UInt32 argument, BYTE responseLength) {
+	// Let's select the SPI by asserting LOW the NSS pin
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+
+	// Before sending an app command we must send a CMD55
+	SBYTE bytesRead = PerformCommandTransaction(SDCMD55AppCmd, 0x0, sizeof(ResponseR1));
+	if (bytesRead < 0) {
+		goto cleanup;
+		// Error
+	}
+	if (_responseBuffer[0] != 0x1) {
+		Error_Handler();
+	}
+
+	// Send the application specific command
+	bytesRead = PerformCommandTransaction(aCommand, argument, responseLength);
+
+	cleanup:
+
+	// Let's deselect the SPI by asserting HIGH the NSS pin
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+	return bytesRead;
+}
+
+static SDStatus CheckVddRange() {
+	// Check if 2.7-3.6v range is supported
+
+	BYTE checkPattern = 0xda;
+	UInt32 argument = SD_CMD8_VHS_2p7To3p6 || checkPattern;
+	SBYTE bytesRcv = SendCommand(SDCMD8SendIfCondition, SD_CMD8_VHS_2p7To3p6, sizeof(ResponseR1));
+
+	// Communication error
+	if (bytesRcv < 0) {
+		return (SDStatus) bytesRcv;
+	}
+
+	PCResponseR1 r1 = (PCResponseR1) _responseBuffer;
+	if (r1->IllegalCommand) {
+		_attachedSdCard.Version = SDVer1pX;
+	} else if (r1->IllegalCommand) {
+		_attachedSdCard.Version = SDVer2p0OrLater;
+		// TODO: check with a new card
+		Error_Handler();
+	}
+	return SDStatusOk;
+}
+
 static SDStatus VerifyVoltageLevel() {
-    //  From Physical Layer Specification, section 7.2.1 we can issue an optional CMD58 to verify that the voltage level we are using is
-    // supported
+	//  From Physical Layer Specification, section 7.2.1 we can issue an optional CMD58 to verify that the voltage level we are using is
+	// supported
 
-    static_assert(sizeof(ResponseR3) == 5);
-    static_assert(sizeof(OCRRegister) == sizeof(Int32));
-    BYTE bytesRcv = SendCommand(SDCMD58ReadOrc, 0x0, sizeof(ResponseR3));
+	static_assert(sizeof(ResponseR3) == 5);
+	static_assert(sizeof(OCRRegister) == sizeof(Int32));
+	SBYTE bytesRcv = SendCommand(SDCMD58ReadOrc, 0x0, sizeof(ResponseR3));
 
-    // Card is not supported
-    if (bytesRcv == 1) {
-        PCResponseR1 r1 = (PCResponseR1)_responseBuffer;
-        if (r1->IllegalCommand)
-            return SDStatusNotSDCard;
-        else
-            Error_Handler();
-    }
+	// Card is not supported
+	if (bytesRcv == 1) {
+		PCResponseR1 r1 = (PCResponseR1) _responseBuffer;
+		if (r1->IllegalCommand)
+			return SDStatusNotSDCard;
+		else
+			Error_Handler();
+	}
 
-    PCResponseR3 r3 = (PCResponseR3)_responseBuffer;
-    // Checking our voltage range
-    if (!(r3->OCR.v2p7tov2p8) || !(r3->OCR.v2p8tov2p9) || !(r3->OCR.v2p9tov3p0)) {
-        return SDStatusVoltageNotSupported;
-    }
+	PCResponseR3 r3 = (PCResponseR3) _responseBuffer;
+	// Checking our voltage range
+	if (!(r3->OCR.v2p7tov2p8) || !(r3->OCR.v2p8tov2p9) || !(r3->OCR.v2p9tov3p0)) {
+		return SDStatusVoltageNotSupported;
+	}
 
-    if (r3->OCR.PowerUpStatus == 0) {
-        return SDStatusPowerUpNotCompleted;
-    }
+	// No other flags should be checked in this stage since the card is still not initialized
+	return SDStatusOk;
+}
 
-    // Ignoring CSS for the moment
-    return SDStatusOk;
+static SDStatus EnableCRC() {
+	DebugAssert(_attachedSdCard.Version != SDVerUnknown);
+
+	SBYTE bytesRcv = SendAppCommand(SDCMD59CRCOnOff, SD_CMD59_CRC_ON, sizeof(ResponseR1));
+	if (bytesRcv < 0) {
+		return (SDStatus) bytesRcv;
+	} else if (!((PCResponseR1) _responseBuffer)->Idle) {
+		Error_Handler();
+	}
+	return SDStatusOk;
+}
+
+static SDStatus SDWaitForReady() {
+	UInt32 startTick = HAL_GetTick();
+	volatile PCResponseR1 pResponse = (PCResponseR1) _responseBuffer;
+
+	DebugAssert(_attachedSdCard.Version != SDVerUnknown);
+	do {
+		// We don't support SDHC or SDXC, so we keep the HCS (Host Capacity Support) bit to zero
+		// even if the SDversion is 2.0 or later
+
+		SBYTE bytesRcv = SendAppCommand(SDACMD41SendOpCond, 0x0, sizeof(ResponseR1));
+		if (bytesRcv < 0) {
+			return (SDStatus) bytesRcv;
+		} else if (pResponse->IllegalCommand) {
+			return SDStatusNotSDCard;
+		}
+	} while (pResponse->Idle && ((HAL_GetTick() - startTick) < SD_ACMD41_LOOP_TIMEOUT));
+
+	if (pResponse->Idle) {
+		return SDStatusInitializationTimeout;
+	}
+	return SDStatusOk;
+}
+
+static SDStatus VerifyCardCapacityStatus() {
+	DebugAssert(_attachedSdCard.Version != SDVerUnknown);
+
+	if (_attachedSdCard.Version == SDVer1pX) {
+		// No need to read OCR [Se Figure 7-2, SPI Mode initialization flow]
+		_attachedSdCard.Capacity = SDCapacityStandard;
+	} else {
+		SBYTE bytesRcv = SendCommand(SDCMD58ReadOrc, 0x0, sizeof(ResponseR3));
+
+		if (bytesRcv < 0) {
+			return (SDStatus) bytesRcv;
+		} else if (bytesRcv == 1) {
+			Error_Handler();
+		}
+
+		PCResponseR3 r3 = (PCResponseR3) _responseBuffer;
+		if (r3->OCR.CCS) {
+			_attachedSdCard.Capacity = SDCapacityExtended;
+		} else {
+			_attachedSdCard.Capacity = SDCapacityStandard;
+		}
+	}
+	return SDStatusOk;
+}
+
+static SDStatus ReadDataBlock(UInt16 blockSize) {
+	blockSize += 3; // 2 bytes of crc16 + Start block
+
+	const BYTE startBlock = 0xFE;
+
+	// First wait for data block
+	BYTE readValue;
+	UInt32 startTick = HAL_GetTick();
+	do {
+		// Response bytes may need some iterations so each time we re-initialize the
+		readValue = ReadByte();
+	} while (readValue != startBlock && ((HAL_GetTick() - startTick) < SD_RESPONSE_TIMEOUT));
+
+	// We have not received an answer
+	if (readValue != startBlock) {
+		return SDStatusCommunicationTimeout;
+	}
+
+	UInt16 crc = CRC16_ZERO;
+	for (int i = 0; i < blockSize - 1; i++) {
+		BYTE data = ReadByte();
+		crc = Crc16Add(crc, data);
+		_dataBlockCrcBuffer[i] = data;
+	}
+
+	if (crc != 0) {
+		return SDStatusReadCorrupted;
+	}
+	return SDStatusOk;
+}
+
+static SDStatus ReadCSDRegister() {
+	// Let's select the SPI by asserting LOW the NSS pin
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+
+	SDStatus result;
+	SBYTE bytesRcv = PerformCommandTransaction(SDCMD9SendCSD, 0x0, sizeof(ResponseR1));
+	// Communication error
+	if (bytesRcv < 0) {
+		result = (SDStatus) bytesRcv;
+		goto cleanup;
+	}
+
+	if (_responseBuffer[0] != 0) {
+		Error_Handler();
+	}
+
+	result = ReadDataBlock(SD_CSD_SIZE);
+	if (result != SDStatusOk) {
+		goto cleanup;
+	}
+
+	PCCSDRegister csd = (PCCSDRegister) _dataBlockCrcBuffer;
+	_attachedSdCard.CSDValidationStatus = SDCSDValidate(csd);
+	if (_attachedSdCard.CSDValidationStatus != SDCSDValidationOk) {
+		return SDStatusInvalidCSD;
+	}
+
+	result = SDStatusOk;
+	cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+	return result;
 }
 
 // ##### Public Function definitions #####
 
-SDStatus SDInitialize(GPIO_TypeDef* powerGPIO, UInt16 powerPin, SPI_HandleTypeDef* spiHandle) {
-    _powerGPIO = powerGPIO;
-    _powerPin = powerPin;
+SDStatus SDInitialize(GPIO_TypeDef *powerGPIO, UInt16 powerPin, SPI_HandleTypeDef *spiHandle) {
+	_powerGPIO = powerGPIO;
+	_powerPin = powerPin;
 
-    _nssGPIO = GPIOB;
-    _nssPin = GPIO_PIN_12;
+	_nssGPIO = GPIOB;
+	_nssPin = GPIO_PIN_12;
 
-    _spiHandle = spiHandle;
+	_spiHandle = spiHandle;
 
-    // To initialize the SD layer, let's perform a power cycle in case our system where resetted but the SD card didn' t have time to perform
-    // the power cycle correctly
-    return SDPerformPowerCycle();
+	// To initialize the SD layer, let's perform a power cycle in case our system where resetted but the SD card didn' t have time to perform
+	// the power cycle correctly
+	return SDPerformPowerCycle();
 }
 
 SDStatus SDPerformPowerCycle() {
-    // Preamble: we shutdown the SPI interface to later re-enabled it
-    ShutdownSDSPIInterface();
+	SDStatus shutdownStatus = SDShutdown();
+	if (shutdownStatus != SDStatusOk) {
+		return shutdownStatus;
+	}
 
-    /* Reference specification : Physical Layer Simplified Specification Version 8.00[Section 6.4.1.2] */
+	// We reset the GPIO to an output push pull state
+	CLEAR_BIT(_nssGPIO->OTYPER, _nssPin);
+	// CS shall be kept high during initialization as stated in section 6.4.1.1
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
 
-    // We need to lower the VDD level under the 0.5V threshold for at least 1 ms
-    // The other lines should also be low in this phase
-    // Let's do 10ms to be sure
-    HAL_GPIO_WritePin(_powerGPIO, _powerPin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
-    HAL_Delay(10);
+	// We can now enable the GPIO, and wait another 1 ms (at least) to let the VDD stabilize
+	// There are some constraints also on the slope on the VDD change but we can do little about this
+	HAL_GPIO_WritePin(_powerGPIO, _powerPin, GPIO_PIN_SET);
+	HAL_Delay(10);
 
-    // We reset the GPIO to an output push pull state
-    CLEAR_BIT(_nssGPIO->OTYPER, _nssPin);
-    // CS shall be kept high during initialization as stated in section 6.4.1.1
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+	memset(&_attachedSdCard, 0, sizeof(SDDescription));
 
-    // We can now enable the GPIO, and wait another 1 ms (at least) to let the VDD stabilize
-    // There are some constraints also on the slope on the VDD change but we can do little about this
-    HAL_GPIO_WritePin(_powerGPIO, _powerPin, GPIO_PIN_SET);
-    HAL_Delay(10);
-
-    // After these step, the SD card (if alredy inserted) should be ready to receive the initialization sequence
-    return SDStatusOk;
+	// After these step, the SD card (if alredy inserted) should be ready to receive the initialization sequence
+	return SDStatusOk;
 }
 
 SDStatus SDTryConnect() {
-    // We assume here that a power cycle was already performed and VDD is stable
-    // We can start the initialization sequence by putting the card in the idle state
+	// We assume here that a power cycle was already performed and VDD is stable
+	// We can start the initialization sequence by putting the card in the idle state
 
-    // From Section 6.4.1.4, we supply at leas 74 clock cycles to the SD cart
-    // We do this by simply enabling the SPI
-    __HAL_SPI_ENABLE(_spiHandle);
+	// From Section 6.4.1.4, we supply at least 74 clock cycles to the SD card
+	// To let the SCK run, as we can see in the SPI chapter of RM0090 [Figure 258]
+	// we need to issue a byte transfer
 
-    // We cannot measure exactly the 74 clock cycles so let' s just wait a little more
-    HAL_Delay(10);
+	// So, firstly we enable the SPI
+	__HAL_SPI_ENABLE(_spiHandle);
 
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
-    BYTE reponseLength = SendCommand(SDCMD0GoIdleState, 0, 1);
+	// Then whe sent 10 dummy bytes which correspond to 80 SPI clock cycles
+	BYTE dummyCrc = CRC7_ZERO;
+	for (size_t i = 0; i < 10; i++) {
+		WriteByte(SD_DUMMY_BYTE, &dummyCrc);
+	}
 
-    // If everything is ok we should get an idle state
-    if (((ResponseR1*)_responseBuffer)->Idle == 0) {
-        Error_Handler();
-    }
+	// After the Power On cycle, we are ready to issue a CMD0 with the NSS pin asserted to LOW
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+	SBYTE responseLength = SendCommand(SDCMD0GoIdleState, 0, 1);
+	if (responseLength < 0) {
+		// Error fomr CMD0 -> We cannot go further or SPI is not supported
+		return (SDStatus) responseLength;
+	}
 
-    //SendCommand2(SD_CMD_8, 0x1aa);
-    SDStatus status = SDStatusOk;
-    if ((status = VerifyVoltageLevel()) != SDStatusOk) {
-        Error_Handler();
-    }
+	// If everything is ok we should get an idle state
+	if (((ResponseR1*) _responseBuffer)->Idle == 0) {
+		Error_Handler();
+	}
 
-    /************************************************************/
+	// Initialization step: ask the card if the specified VHS is supported
+	SDStatus status;
+	if ((status = CheckVddRange()) != SDStatusOk) {
+		return status;
+	}
 
-    // Preamble: we shutdown the SPI interface to later re-enabled it
-    ShutdownSDSPIInterface();
+	// Initialization step (optional): query the card for the supported voltage ranges through OCR
+	if ((status = VerifyVoltageLevel()) != SDStatusOk) {
+		return status;
+	}
 
-    /* Reference specification : Physical Layer Simplified Specification Version 8.00[Section 6.4.1.2] */
+	// As stated in the "Bus Transfer Protection" [Section 7.2.2] of the SD Specification,
+	// CRC should be enabled before issuing ACMD41
+	if ((status = EnableCRC()) != SDStatusOk) {
+		Error_Handler();
+	}
 
-    // We need to lower the VDD level under the 0.5V threshold for at least 1 ms
-    // The other lines should also be low in this phase
-    // Let's do 10ms to be sure
-    HAL_GPIO_WritePin(_powerGPIO, _powerPin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
-    HAL_Delay(10);
+	// Initialization step: wait for initialization
+	if ((status = SDWaitForReady()) != SDStatusOk) {
+		Error_Handler();
+	}
+
+	// Initialization step (last): verify Card Capacity Status
+	if ((status = VerifyCardCapacityStatus()) != SDStatusOk) {
+		Error_Handler();
+	}
+
+	if ((status = ReadCSDRegister()) != SDStatusOk) {
+		Error_Handler();
+	}
+
+	PCCSDRegister csd = (PCCSDRegister) _dataBlockCrcBuffer;
+	_attachedSdCard.MaxTransferSpeed = SDCSDGetMaxTransferRate(csd);
+
+	return SDStatusOk;
+}
+
+SDStatus SDDisconnect() {
+	// Preamble: we shutdown the SPI interface to later re-enabled it
+	ShutdownSDSPIInterface();
+	// We leave the NSS high
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+
+	return SDStatusOk;
+}
+
+SDStatus SDShutdown() {
+	// Preamble: we shutdown the SPI interface to later re-enabled it
+	ShutdownSDSPIInterface();
+
+	/* Reference specification : Physical Layer Simplified Specification Version 8.00[Section 6.4.1.2] */
+
+	// We need to lower the VDD level under the 0.5V threshold for at least 1 ms
+	// The other lines should also be low in this phase
+	// Let's do 10ms to be sure
+	HAL_GPIO_WritePin(_powerGPIO, _powerPin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+	HAL_Delay(10);
+
+	return SDStatusOk;
 }

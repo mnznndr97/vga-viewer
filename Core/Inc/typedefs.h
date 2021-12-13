@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifndef INC_TYPEDEFS_H_
 #define INC_TYPEDEFS_H_
@@ -30,6 +31,8 @@ typedef uint16_t UInt16;
 typedef uint32_t UInt32;
 typedef uint64_t UInt64;
 
+typedef const UInt32* PCUInt32;
+typedef const UInt16* PCUInt16;
 typedef const BYTE* PCBYTE;
 
 #endif /* INC_TYPEDEFS_H_ */

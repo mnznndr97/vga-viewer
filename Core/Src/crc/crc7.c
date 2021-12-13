@@ -5,8 +5,8 @@
  *      Author: mnznn
  */
 
-#include <crc7.h>
-#include <assert.h>
+#include <crc/crc7.h>
+#include <assertion.h>
 
 static uint8_t CRCTable[256];
 
@@ -27,7 +27,7 @@ void Crc7Initialize() {
 		}
 
 		// CRC7 MSB should always be 0 per algorithm
-		assert((CRCTable[i] & 0x80) == 0);
+		DebugAssert((CRCTable[i] & 0x80) == 0);
 	}
 }
 
@@ -39,5 +39,30 @@ uint8_t Crc7Add(uint8_t crc, uint8_t data) {
 	// CRC value at the newly calculated value
 	uint8_t index = (uint8_t) ((crc << 1) ^ data);
 	return CRCTable[index];
+}
+
+uint8_t Crc7Calculate(const uint8_t *pData, size_t length) {
+	uint8_t crc = CRC7_ZERO;
+
+	size_t byteOffset = 0;
+	const uint32_t *pU32 = (const uint32_t*) pData;
+	for (size_t i = 0; i < (length / 4); i++, byteOffset += 4) {
+		uint32_t data = pU32[i];
+
+        // NB: data are read in little endian order in our U32 so
+        // we must crc them in "reverse" order
+		crc = Crc7Add(crc, ((data) & 0xFF));
+		crc = Crc7Add(crc, ((data >> 8) & 0xFF));
+		crc = Crc7Add(crc, ((data >> 16) & 0xFF));
+		crc = Crc7Add(crc, ((data >> 24) & 0xFF));
+	}
+
+    // Let's also handle trailing bytes
+	for (size_t i = byteOffset; i < length; i++) {
+		uint8_t data = pData[i];
+		crc = Crc7Add(crc, data);
+	}
+
+	return crc;
 }
 

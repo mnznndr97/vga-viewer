@@ -33,7 +33,7 @@
 
 #include <hal_extensions.h>
 #include <cmsis_extensions.h>
-#include <crc7.h>
+#include <crc/crc7.h>
 #include <vga/edid.h>
 #include <vga/vgascreenbuffer.h>
 #include <screen/screen.h>
@@ -197,7 +197,7 @@ void HandleI2CError(I2C_HandleTypeDef *hi2c) {
 		// We are not a slave device, no overrun/underrun errors should be detected
 		Error_Handler();
 	} else {
-		printf("I2C error not handled: %" PRIu32);
+		printf("I2C error not handled: %" PRIu32, errorCode);
 		Error_Handler();
 	}
 
@@ -329,9 +329,15 @@ int main(void) {
 #endif
 	printf("\r\n");
 
-	SDInitialize(GPIOC, GPIO_PIN_1, &hspi2);
+	SDStatus status;
 
-	SDTryConnect();
+	if ((status = SDInitialize(GPIOC, GPIO_PIN_1, &hspi2)) != SDStatusOk) {
+		Error_Handler();
+	}
+
+	if ((status = SDTryConnect()) != SDStatusOk) {
+		Error_Handler();
+	}
 	while (true) {
 
 	}
