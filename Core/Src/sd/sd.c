@@ -7,6 +7,8 @@
 
 #include <sd/sd.h>
 #include <sd/csd.h>
+#include <sd/cid.h>
+#include <sd/ocr.h>
 #include <crc/crc7.h>
 #include <crc/crc16.h>
 #include <stdio.h>
@@ -44,6 +46,8 @@ typedef enum _SDCommand {
 	SDCMD8SendIfCondition = 8,
 	/// Asks the selected card to send it's Card Specific Data
 	SDCMD9SendCSD = 9,
+	/// Asks the selected card to send it's Card Identification Data
+	SDCMD10SendCID = 10,
 	/// Defines to the card that the next command is an application specific comamnd
 	/// Response is R1
 	SDCMD55AppCmd = 55,
@@ -109,7 +113,12 @@ static SDStatus SDWaitForReady();
 static SDStatus VerifyCardCapacityStatus();
 
 static SDStatus ReadDataBlock(UInt16 blockSize);
-static SDStatus ReadCSDRegister();
+static SDStatus ReadRegister(SDCommand readCommand, UInt16 length);
+static SDStatus ReadCSD();
+static SDStatus ReadCID();
+/// Apply all the necessary changes to the SD interface with the information provided in the CSD register
+/// @return Status of the operation
+static SDStatus FixWithCSDRegister();
 
 // ##### Private Implementation #####
 
@@ -126,42 +135,6 @@ static BYTE _responseBuffer[SD_MAX_RESPONSE_SIZE];
 /// Static allocated buffer where a data block will be read togheter with the related crc
 static BYTE _dataBlockCrcBuffer[SD_DATA_BLOCK_SIZE + SD_CRC_SIZE];
 static SDDescription _attachedSdCard;
-
-/// OCR register definition
-/// \remarks The struct is layed out as if read in little endian from an int 32
-/// This is what happens when casting the result buffer to an R3 pointer
-typedef struct _OCRRegister {
-	/********* UInt32 LSB -> Bits from 31 to 24 ******/
-	/// Only USH-I card support this bit
-	UInt32 Switch1p8Accepted :1; // Bit 24
-	UInt32 Reserved :2; // Bit 25-26
-	/// Over 2TB support Status. Only SDUC card support this bit
-	UInt32 CO2T :1; // Bit 27
-	UInt32 Reserved2 :1; // Bit 28
-	UInt32 UHSIICardStatus :1; // Bit 29
-	/// Card Capacity Status. This bit is valid only whe the canrd power up status bit is set
-	UInt32 CCS :1; // Bit 30
-	/// Power up status. Set to low if the card has not finished the power up routine
-	UInt32 PowerUpStatus :1; // Bit 31
-
-	/********* UInt32 byte 2 -> Bits from 23 to 16 ******/
-	UInt32 v2p8tov2p9 :1; // Bit 16
-	UInt32 v2p9tov3p0 :1; // Bit 17
-	UInt32 v3p0tov3p1 :1; // Bit 18
-	UInt32 v3p1tov3p2 :1; // Bit 19
-	UInt32 v3p2tov3p3 :1; // Bit 20
-	UInt32 v3p3tov3p4 :1; // Bit 21
-	UInt32 v3p4tov3p5 :1; // Bit 22
-	UInt32 v3p5tov3p6 :1; // Bit 23
-
-	/********* UInt32 byte 3 -> Bits from 15 to 8 ******/
-	UInt32 VddWindowReserved1 :7; // Bits 14 - 8
-	UInt32 v2p7tov2p8 :1; // Bit 15
-
-	/********* UInt32 MSB -> Bits from 7 to 0 ******/
-	UInt32 VddWindowReserved :8; // Bits 7 - 0
-
-} OCRRegister;
 
 typedef struct _ResponseR1 {
 	BYTE Idle :1; // BIT 0
@@ -200,6 +173,10 @@ static void ShutdownSDSPIInterface() {
 
 	 */
 	__HAL_SPI_DISABLE(_spiHandle);
+
+	// We reset the minimum baud rate
+	SET_BIT(_spiHandle->Instance->CR1, SPI_CR1_BR);
+	DebugAssert((HAL_RCC_GetPCLK1Freq() / 256.0f) > 100000);
 
 	// We don't have to do anything with the CS signal for the moment
 }
@@ -432,8 +409,10 @@ static SDStatus VerifyCardCapacityStatus() {
 		PCResponseR3 r3 = (PCResponseR3) _responseBuffer;
 		if (r3->OCR.CCS) {
 			_attachedSdCard.Capacity = SDCapacityExtended;
+            _attachedSdCard.AddressingMode = SDAddressingModeSector;
 		} else {
 			_attachedSdCard.Capacity = SDCapacityStandard;
+            _attachedSdCard.AddressingMode = SDAddressingModeByte;
 		}
 	}
 	return SDStatusOk;
@@ -470,12 +449,12 @@ static SDStatus ReadDataBlock(UInt16 blockSize) {
 	return SDStatusOk;
 }
 
-static SDStatus ReadCSDRegister() {
+static SDStatus ReadRegister(SDCommand readCommand, UInt16 length) {
 	// Let's select the SPI by asserting LOW the NSS pin
 	HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
 
 	SDStatus result;
-	SBYTE bytesRcv = PerformCommandTransaction(SDCMD9SendCSD, 0x0, sizeof(ResponseR1));
+	SBYTE bytesRcv = PerformCommandTransaction(readCommand, 0x0, sizeof(ResponseR1));
 	// Communication error
 	if (bytesRcv < 0) {
 		result = (SDStatus) bytesRcv;
@@ -486,9 +465,20 @@ static SDStatus ReadCSDRegister() {
 		Error_Handler();
 	}
 
-	result = ReadDataBlock(SD_CSD_SIZE);
+	result = ReadDataBlock(length);
 	if (result != SDStatusOk) {
 		goto cleanup;
+	}
+
+	result = SDStatusOk;
+	cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+	return result;
+}
+
+static SDStatus ReadCSD() {
+	SDStatus result = ReadRegister(SDCMD9SendCSD, SD_CSD_SIZE);
+	if (result != SDStatusOk) {
+		return result;
 	}
 
 	PCCSDRegister csd = (PCCSDRegister) _dataBlockCrcBuffer;
@@ -497,9 +487,37 @@ static SDStatus ReadCSDRegister() {
 		return SDStatusInvalidCSD;
 	}
 
-	result = SDStatusOk;
-	cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
-	return result;
+	return SDStatusOk;
+}
+
+static SDStatus ReadCID() {
+	SDStatus result = ReadRegister(SDCMD10SendCID, SD_CID_SIZE);
+	if (result != SDStatusOk) {
+		return result;
+	}
+
+    PCCIDRegister cid = (PCCIDRegister)_dataBlockCrcBuffer;
+    _attachedSdCard.CIDValidationStatus = SDCIDValidate(cid);
+    if (_attachedSdCard.CIDValidationStatus != SDCIDValidationOk) {
+        return SDStatusInvalidCID;
+    }
+
+	return SDStatusOk;
+}
+
+SDStatus FixWithCSDRegister() {
+	PCCSDRegister csd = (PCCSDRegister) _dataBlockCrcBuffer;
+	_attachedSdCard.MaxTransferSpeed = SDCSDGetMaxTransferRate(csd);
+
+	// SPI2 is on PCLK1
+	UInt32 spi2Freq = HAL_RCC_GetPCLK1Freq();
+	// As stated in the RM0090, the SPI baud rate control can be changed with the peripheral enabled but not when a transfer is ongoing
+	DebugAssert((spi2Freq / 2.0f) < _attachedSdCard.MaxTransferSpeed);
+
+	// Max baud rate
+	CLEAR_BIT(_spiHandle->Instance->CR1, SPI_CR1_BR);
+
+	return SDStatusOk;
 }
 
 // ##### Public Function definitions #####
@@ -597,12 +615,17 @@ SDStatus SDTryConnect() {
 		Error_Handler();
 	}
 
-	if ((status = ReadCSDRegister()) != SDStatusOk) {
+	if ((status = ReadCSD()) != SDStatusOk) {
 		Error_Handler();
 	}
 
-	PCCSDRegister csd = (PCCSDRegister) _dataBlockCrcBuffer;
-	_attachedSdCard.MaxTransferSpeed = SDCSDGetMaxTransferRate(csd);
+	if ((status = FixWithCSDRegister()) != SDStatusOk) {
+		Error_Handler();
+	}
+
+	if ((status = ReadCID()) != SDStatusOk) {
+		Error_Handler();
+	}
 
 	return SDStatusOk;
 }

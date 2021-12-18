@@ -37,6 +37,8 @@
 #include <string.h>
 #include "ff_gen_drv.h"
 
+#include <sd/sd.h>
+
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 
@@ -82,6 +84,8 @@ DSTATUS USER_initialize (
 )
 {
   /* USER CODE BEGIN INIT */
+    if(pdrv > 0) return STA_NOINIT
+
     Stat = STA_NOINIT;
     return Stat;
   /* USER CODE END INIT */

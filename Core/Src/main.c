@@ -107,6 +107,7 @@ static volatile uint8_t _userCommandReceivedFlag = 0;
 static UInt32 _vgaCheckLastTick = 0;
 
 static MainApplicationRunning _currentRunningApp = AppIdle;
+static FATFS _sdMountData;
 
 /* USER CODE END PV */
 
@@ -329,18 +330,20 @@ int main(void) {
 #endif
 	printf("\r\n");
 
-	SDStatus status;
+	FRESULT mountResult = f_mount(&_sdMountData, "", 1);
 
-	if ((status = SDInitialize(GPIOC, GPIO_PIN_1, &hspi2)) != SDStatusOk) {
-		Error_Handler();
-	}
+	/*SDStatus status;
 
-	if ((status = SDTryConnect()) != SDStatusOk) {
-		Error_Handler();
-	}
-	while (true) {
+	 if ((status = SDInitialize(GPIOC, GPIO_PIN_1, &hspi2)) != SDStatusOk) {
+	 Error_Handler();
+	 }
 
-	}
+	 if ((status = SDTryConnect()) != SDStatusOk) {
+	 Error_Handler();
+	 }
+	 while (true) {
+
+	 }*/
 
 	/*uint8_t buffer[128];
 	 HAL_StatusTypeDef halStatus = HAL_I2C_Master_Receive(&hi2c2, 0x50 << 1, buffer, 128, HAL_MAX_DELAY);

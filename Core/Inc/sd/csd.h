@@ -17,7 +17,7 @@
 
 /// CSD register definition
 typedef struct _CSDRegister CSDRegister;
-/// CDS const pointer definition
+/// CSD const pointer definition
 typedef const CSDRegister *PCCSDRegister;
 
 typedef enum _SDCSDValidation {
