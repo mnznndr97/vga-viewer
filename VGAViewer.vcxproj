@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|ARM">
@@ -74,6 +74,7 @@
     <ClCompile Include="Core\Src\fonts\hp_simplified.c" />
     <ClCompile Include="Core\Src\freertos.c" />
     <ClCompile Include="Core\Src\hal_extensions.c" />
+    <ClCompile Include="Core\Src\io\sd_driver.c" />
     <ClCompile Include="core\src\main.c" />
     <ClCompile Include="Core\Src\ram.c" />
     <ClCompile Include="core\src\screen\screen.c" />
@@ -141,11 +142,13 @@
     <ClInclude Include="Core\Inc\FreeRTOSConfig.h" />
     <ClInclude Include="Core\Inc\hal_extensions.h" />
     <ClInclude Include="Core\Inc\intmath.h" />
+    <ClInclude Include="Core\Inc\io\sd_driver.h" />
     <ClInclude Include="core\inc\main.h" />
     <ClInclude Include="Core\Inc\ram.h" />
     <ClInclude Include="core\inc\screen\screen.h" />
     <ClInclude Include="Core\Inc\sd\cid.h" />
     <ClInclude Include="Core\Inc\sd\csd.h" />
+    <ClInclude Include="Core\Inc\sd\ocr.h" />
     <ClInclude Include="Core\Inc\sd\sd.h" />
     <ClInclude Include="core\inc\stm32f4xx_hal_conf.h" />
     <ClInclude Include="core\inc\stm32f4xx_it.h" />
