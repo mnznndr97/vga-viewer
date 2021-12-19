@@ -1,22 +1,22 @@
 /* USER CODE BEGIN Header */
 /**
  ******************************************************************************
-  * @file    user_diskio.c
-  * @brief   This file includes a diskio driver skeleton to be completed by the user.
-  ******************************************************************************
-  * @attention
-  *
-  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
-  * All rights reserved.</center></h2>
-  *
-  * This software component is licensed by ST under Ultimate Liberty license
-  * SLA0044, the "License"; You may not use this file except in compliance with
-  * the License. You may obtain a copy of the License at:
-  *                             www.st.com/SLA0044
-  *
-  ******************************************************************************
-  */
-  /* USER CODE END Header */
+ * @file    user_diskio.c
+ * @brief   This file includes a diskio driver skeleton to be completed by the user.
+ ******************************************************************************
+ * @attention
+ *
+ * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
+ * All rights reserved.</center></h2>
+ *
+ * This software component is licensed by ST under Ultimate Liberty license
+ * SLA0044, the "License"; You may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at:
+ *                             www.st.com/SLA0044
+ *
+ ******************************************************************************
+ */
+ /* USER CODE END Header */
 
 #ifdef USE_OBSOLETE_USER_CODE_SECTION_0
 /*
@@ -27,8 +27,8 @@
  * User code previously added there should be copied in the new user sections before
  * the section contents can be deleted.
  */
- /* USER CODE BEGIN 0 */
- /* USER CODE END 0 */
+/* USER CODE BEGIN 0 */
+/* USER CODE END 0 */
 #endif
 
 /* USER CODE BEGIN DECL */
@@ -51,14 +51,14 @@ static volatile DSTATUS _diskStatus = STA_NOINIT;
 /* USER CODE END DECL */
 
 /* Private function prototypes -----------------------------------------------*/
-DSTATUS USER_initialize(BYTE pdrv);
-DSTATUS USER_status(BYTE pdrv);
-DRESULT USER_read(BYTE pdrv, BYTE* buff, DWORD sector, UINT count);
+DSTATUS USER_initialize (BYTE pdrv);
+DSTATUS USER_status (BYTE pdrv);
+DRESULT USER_read (BYTE pdrv, BYTE *buff, DWORD sector, UINT count);
 #if _USE_WRITE == 1
-DRESULT USER_write(BYTE pdrv, const BYTE* buff, DWORD sector, UINT count);
+  DRESULT USER_write (BYTE pdrv, const BYTE *buff, DWORD sector, UINT count);
 #endif /* _USE_WRITE == 1 */
 #if _USE_IOCTL == 1
-DRESULT USER_ioctl(BYTE pdrv, BYTE cmd, void* buff);
+  DRESULT USER_ioctl (BYTE pdrv, BYTE cmd, void *buff);
 #endif /* _USE_IOCTL == 1 */
 
 Diskio_drvTypeDef  USER_Driver =
@@ -81,36 +81,37 @@ Diskio_drvTypeDef  USER_Driver =
   * @param  pdrv: Physical drive number (0..)
   * @retval DSTATUS: Operation status
   */
-DSTATUS USER_initialize(
-    BYTE pdrv           /* Physical drive nmuber to identify the drive */
+DSTATUS USER_initialize (
+	BYTE pdrv           /* Physical drive nmuber to identify the drive */
 )
 {
-    /* USER CODE BEGIN INIT */
-    if (pdrv > 0) return STA_NOINIT;
+  /* USER CODE BEGIN INIT */
+	if (pdrv > 0)
+		return STA_NOINIT;
 
-    printf("Initializing SD card ... ");
-    // We perform a power cycle in the SD card (a card already attached may be not correctly initialized if a reset
-    // occurred
-    SDStatus powerCycleStatus = SDPerformPowerCycle();
-    // Power cycle should never return an error
-    if (powerCycleStatus != SDStatusOk) Error_Handler();
+	printf("Initializing SD card ... ");
+	// We perform a power cycle in the SD card (a card already attached may be not correctly initialized if a reset
+	// occurred
+	SDStatus powerCycleStatus = SDPerformPowerCycle();
+	// Power cycle should never return an error
+	if (powerCycleStatus != SDStatusOk)
+		Error_Handler();
 
-    // After a power cycle we can try to open the connection to our SD card
-    SDStatus connectionStatus = SDTryConnect();
-    SDDumpStatusCode(connectionStatus);
-    printf("\r\n");
+	// After a power cycle we can try to open the connection to our SD card
+	SDStatus connectionStatus = SDTryConnect();
+	SDDumpStatusCode(connectionStatus);
+	printf("\r\n");
 
-    if (connectionStatus == SDStatusOk) {
-        // We enforce that the SD card is write protected (we don't care writing at the moment)
-        _diskStatus = STA_PROTECT;
-    }
-    else {
-        // STA_NOINIT indicates also an error
-        _diskStatus = STA_NOINIT;
-    }
+	if (connectionStatus == SDStatusOk) {
+		// We enforce that the SD card is write protected (we don't care writing at the moment)
+		_diskStatus = STA_PROTECT;
+	} else {
+		// STA_NOINIT indicates also an error
+		_diskStatus = STA_NOINIT;
+	}
 
-    return _diskStatus;
-    /* USER CODE END INIT */
+	return _diskStatus;
+  /* USER CODE END INIT */
 }
 
 /**
@@ -118,14 +119,15 @@ DSTATUS USER_initialize(
   * @param  pdrv: Physical drive number (0..)
   * @retval DSTATUS: Operation status
   */
-DSTATUS USER_status(
-    BYTE pdrv       /* Physical drive number to identify the drive */
+DSTATUS USER_status (
+	BYTE pdrv       /* Physical drive number to identify the drive */
 )
 {
-    /* USER CODE BEGIN STATUS */
-    if (pdrv > 0) return STA_NOINIT;
-    return _diskStatus;
-    /* USER CODE END STATUS */
+  /* USER CODE BEGIN STATUS */
+	if (pdrv > 0)
+		return STA_NOINIT;
+	return _diskStatus;
+  /* USER CODE END STATUS */
 }
 
 /**
@@ -136,30 +138,39 @@ DSTATUS USER_status(
   * @param  count: Number of sectors to read (1..128)
   * @retval DRESULT: Operation result
   */
-DRESULT USER_read(
-    BYTE pdrv,      /* Physical drive nmuber to identify the drive */
-    BYTE* buff,     /* Data buffer to store read data */
-    DWORD sector,   /* Sector address in LBA */
-    UINT count      /* Number of sectors to read */
+DRESULT USER_read (
+	BYTE pdrv,      /* Physical drive nmuber to identify the drive */
+	BYTE *buff,     /* Data buffer to store read data */
+	DWORD sector,   /* Sector address in LBA */
+	UINT count      /* Number of sectors to read */
 )
 {
-    /* USER CODE BEGIN READ */
+  /* USER CODE BEGIN READ */
 
-    if (count == 1) {
-        SDStatus readSectorStatus = SDReadSector(sector, buff);
-        if (readSectorStatus != SDStatusOk)
-        {
-            printf("Read of sector " PRId32 " returned error ");
-            SDDumpStatusCode(readSectorStatus);
-            printf("\r\n");
+	if (count == 1) {
+		SDStatus readSectorStatus = SDReadSector(buff, sector);
+		if (readSectorStatus != SDStatusOk) {
+			printf("Read of sector " PRIu32 " returned error ", sector);
+			SDDumpStatusCode(readSectorStatus);
+			printf("\r\n");
 
-            return RES_ERROR;
-        }
-        return RES_OK;
-    }
+			return RES_ERROR;
+		}
+		return RES_OK;
+	} else {
+		SDStatus readSectorStatus = SDReadSectors(buff, sector, count);
+		if (readSectorStatus != SDStatusOk) {
+			printf("Read of " PRIu32 " sectors from sector " PRIu32 " returned error ", count, sector);
+			SDDumpStatusCode(readSectorStatus);
+			printf("\r\n");
 
-    return RES_OK;
-    /* USER CODE END READ */
+			return RES_ERROR;
+		}
+		return RES_OK;
+	}
+
+	return RES_OK;
+  /* USER CODE END READ */
 }
 
 /**
@@ -171,21 +182,21 @@ DRESULT USER_read(
   * @retval DRESULT: Operation result
   */
 #if _USE_WRITE == 1
-DRESULT USER_write(
-    BYTE pdrv,          /* Physical drive nmuber to identify the drive */
-    const BYTE* buff,   /* Data to be written */
-    DWORD sector,       /* Sector address in LBA */
-    UINT count          /* Number of sectors to write */
+DRESULT USER_write (
+	BYTE pdrv,          /* Physical drive nmuber to identify the drive */
+	const BYTE *buff,   /* Data to be written */
+	DWORD sector,       /* Sector address in LBA */
+	UINT count          /* Number of sectors to write */
 )
 {
-    /* USER CODE BEGIN WRITE */
-    /* USER CODE HERE */
-    
-    // Should never get here
-    Error_Handler();
-    
-    return RES_OK;
-    /* USER CODE END WRITE */
+  /* USER CODE BEGIN WRITE */
+	/* USER CODE HERE */
+
+	// Should never get here
+	Error_Handler();
+
+	return RES_OK;
+  /* USER CODE END WRITE */
 }
 #endif /* _USE_WRITE == 1 */
 
@@ -197,17 +208,17 @@ DRESULT USER_write(
   * @retval DRESULT: Operation result
   */
 #if _USE_IOCTL == 1
-DRESULT USER_ioctl(
-    BYTE pdrv,      /* Physical drive nmuber (0..) */
-    BYTE cmd,       /* Control code */
-    void* buff      /* Buffer to send/receive control data */
+DRESULT USER_ioctl (
+	BYTE pdrv,      /* Physical drive nmuber (0..) */
+	BYTE cmd,       /* Control code */
+	void *buff      /* Buffer to send/receive control data */
 )
 {
-    /* USER CODE BEGIN IOCTL */
-    Error_Handler();
-    DRESULT res = RES_ERROR;
-    return res;
-    /* USER CODE END IOCTL */
+  /* USER CODE BEGIN IOCTL */
+	Error_Handler();
+	DRESULT res = RES_ERROR;
+	return res;
+  /* USER CODE END IOCTL */
 }
 #endif /* _USE_IOCTL == 1 */
 

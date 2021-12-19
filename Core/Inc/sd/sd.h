@@ -75,9 +75,16 @@ SDStatus SDTryConnect();
 SDStatus SDDisconnect();
 
 /// Reads a data from the specified sector
+/// \param destination Destination buffer
 /// \param sector Sector to read
 /// \return Status of the operation
-SDStatus SDReadSector(UInt32 sector, BYTE* destination);
+SDStatus SDReadSector(BYTE* destination, UInt32 sector);
+
+/// Reads multiple sequential sectors into the destination buffer
+/// \param destination Destination buffer
+/// \param sector Sector where to start the read operation
+/// \return Status of the operation
+SDStatus SDReadSectors(BYTE* destination, UInt32 sector, UInt32 count);
 
 /// Prints the status code description
 /// @param status Error code from the SD
