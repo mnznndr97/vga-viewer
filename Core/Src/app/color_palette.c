@@ -62,6 +62,6 @@ void AppPaletteProcessInput(char command) {
 
 }
 
-void AppPaletteDeinitialize() {
+void AppPaletteClose() {
 	_activeBuffer = NULL;
 }

@@ -5,15 +5,15 @@
  *      Author: mnznn
  */
 
-#include <screen/screen.h>
 
 #ifndef INC_APP_COLOR_PALETTE_H_
 #define INC_APP_COLOR_PALETTE_H_
 
+#include <screen/screen.h>
 
 void AppPaletteInitialize(ScreenBuffer* screenBuffer);
 void AppPaletteProcessInput(char command);
-void AppPaletteDeinitialize();
+void AppPaletteClose();
 
 
 #endif /* INC_APP_COLOR_PALETTE_H_ */

@@ -41,6 +41,7 @@
 #include <ram.h>
 
 #include <app/color_palette.h>
+#include <app/explorer.h>
 
 /* USER CODE END Includes */
 
@@ -48,7 +49,7 @@
 /* USER CODE BEGIN PTD */
 
 typedef enum _MainApplicationRunning {
-	AppIdle, AppPalette,
+	AppIdle, AppPalette, AppExplorer
 } MainApplicationRunning;
 /* USER CODE END PTD */
 
@@ -107,7 +108,6 @@ static volatile uint8_t _userCommandReceivedFlag = 0;
 static UInt32 _vgaCheckLastTick = 0;
 
 static MainApplicationRunning _currentRunningApp = AppIdle;
-static FATFS _sdMountData;
 
 /* USER CODE END PV */
 
@@ -146,8 +146,8 @@ int __io_putchar(int ch) {
 		osExEnforeStackProtection(NULL);
 	}
 
-	DebugWriteChar(ch);
-	return 0;
+	/*DebugWriteChar(ch);
+	 return 0;*/
 
 	// This call is blocking with infinite timeout so in general we should not have errors
 	HAL_StatusTypeDef result = HAL_UART_Transmit(&huart4, (unsigned char*) &ch, 1, HAL_MAX_DELAY);
@@ -339,34 +339,27 @@ int main(void) {
 		Error_Handler();
 	}
 
-	FRESULT mountResult = f_mount(&_sdMountData, "", 1);
+	/*DIR dirHandle;
+	 FILINFO fileHandle;
+	 FRESULT mountOpenResult = f_opendir(&dirHandle, "");
+	 if (mountOpenResult != FR_OK) {
+	 Error_Handler();
+	 }
 
-	if (mountResult != FR_OK) {
-		Error_Handler();
-	}
+	 FRESULT readDirResult;
+	 while ((readDirResult = f_readdir(&dirHandle, &fileHandle)) == FR_OK) {
+	 FIL file;
+	 static BYTE buffer[255];
+	 int read = 0;
+	 if (strcmp(fileHandle.fname, "supersecret.txt") == 0) {
 
-	DIR dirHandle;
-	FILINFO fileHandle;
-	FRESULT mountOpenResult = f_opendir(&dirHandle, "");
-	if (mountOpenResult != FR_OK) {
-		Error_Handler();
-	}
-
-	FRESULT readDirResult;
-	while ((readDirResult = f_readdir(&dirHandle, &fileHandle)) == FR_OK) {
-		FIL file;
-		static BYTE buffer[255];
-		int read = 0;
-		if (strcmp(fileHandle.fname, "supersecret.txt") == 0) {
-			FRESULT openResult = f_open(&file, fileHandle.fname, FA_READ | FA_OPEN_EXISTING);
-			FRESULT readResult = f_read(&file, buffer, 255, &read);
-			int a = 0;
-		}
-	}
-	FRESULT mountCloseResult = f_closedir(&dirHandle);
-	if (mountCloseResult != FR_OK) {
-		Error_Handler();
-	}
+	 int a = 0;
+	 }
+	 }
+	 FRESULT mountCloseResult = f_closedir(&dirHandle);
+	 if (mountCloseResult != FR_OK) {
+	 Error_Handler();
+	 }*/
 
 	/**if ((status = SDTryConnect()) != SDStatusOk) {
 	 Error_Handler();
@@ -983,6 +976,11 @@ void HandleUserInput() {
 
 	IssueUserInputReadWithIT();
 	if (receivedCommand == '\e') {
+		if (_currentRunningApp == AppPalette) {
+			AppPaletteClose();
+		} else if (_currentRunningApp == AppExplorer) {
+			ExplorerClose();
+		}
 		_currentRunningApp = AppIdle;
 
 		Pen currentPen = { 0 };
@@ -992,6 +990,9 @@ void HandleUserInput() {
 		switch (_currentRunningApp) {
 		case AppPalette:
 			AppPaletteProcessInput(receivedCommand);
+			break;
+		case AppExplorer:
+			ExplorerProcessInput(receivedCommand);
 			break;
 		}
 	} else {
@@ -1016,22 +1017,26 @@ void HandleUserInput() {
 
 		}
 			break;
-		case '\e': {
-			Pen currentPen = { };
-			currentPen.color.components.A = 0xFF;
-			for (size_t line = 0; line < 300; line++) {
-				for (size_t pixel = 0; pixel < 400; pixel++) {
-					currentPen.color.components.R = (pixel % 4) * 64;
-					ScreenDrawPixel(_screenBuffer, (PointS ) { pixel, line }, &currentPen);
-				}
-			}
-			//CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
+			//case '\e': {
+			//    Pen currentPen = { };
+			//    currentPen.color.components.A = 0xFF;
+			//    for (size_t line = 0; line < 300; line++) {
+			//        for (size_t pixel = 0; pixel < 400; pixel++) {
+			//            currentPen.color.components.R = (pixel % 4) * 64;
+			//            ScreenDrawPixel(_screenBuffer, (PointS) { pixel, line }, & currentPen);
+			//        }
+			//    }
+			//    //CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
 
-		}
+			//}
 			break;
 		case 'p':
 			_currentRunningApp = AppPalette;
 			AppPaletteInitialize(_screenBuffer);
+			break;
+		case 'e':
+			_currentRunningApp = AppExplorer;
+			ExplorerOpen(_screenBuffer);
 			break;
 		}
 	}
@@ -1278,12 +1283,12 @@ void Error_Handler(void) {
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
+void assert_failed(uint8_t* file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-                          /* User can add his own implementation to report the file name and line number,
-                           ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+    /* USER CODE BEGIN 6 */
+                            /* User can add his own implementation to report the file name and line number,
+                             ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+                             /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 

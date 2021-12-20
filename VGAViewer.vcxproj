@@ -63,6 +63,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Core\Src\app\color_palette.c" />
+    <ClCompile Include="Core\Src\app\explorer.c" />
     <ClCompile Include="core\src\assertion.c" />
     <ClCompile Include="Core\Src\binary.c" />
     <ClCompile Include="Core\Src\cmsis_extensions.c" />
@@ -130,6 +131,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Inc\app\color_palette.h" />
+    <ClInclude Include="Core\Inc\app\explorer.h" />
     <ClInclude Include="core\inc\assertion.h" />
     <ClInclude Include="Core\Inc\binary.h" />
     <ClInclude Include="Core\Inc\cmsis_extensions.h" />
