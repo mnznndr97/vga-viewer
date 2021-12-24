@@ -18,6 +18,7 @@
 extern void Error_Handler();
 
 #define SD_DUMMY_BYTE 0xFF
+#define SD_MIN_FREQ 100000
 
 /// Max size of a SD SPI response
 /// \remarks The response formats and sizes are defined in the
@@ -166,27 +167,18 @@ typedef const ResponseR1* PCResponseR1;
 typedef const ResponseR3* PCResponseR3;
 
 /// Completly disables the SPI interface
-static void ShutdownSDSPIInterface() {
+static void ShutdownSPIInterface() {
     // We need to complety disable our SPI interface
     // Let's follow the procedure indicate in the SPI chapter of RM0090 [Section 28.3.8]
 
-    /*
-     // Let's wait to have received the last data
-     while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_RXNE) == 0)
-     ;
-     // Let' s wait for a transfer to complete (we are in full duplex bidirectional mode)
-     while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_TXE) == 0)
-     ;
-     // Let' s wait for the channel to be freen
-     while (READ_BIT(_spiHandle->Instance->SR, SPI_SR_BSY) == 1)
-     ;
-
-     */
+    // We should not have anything running so we simply disable the SPI and we reset the frequency at the minimum
     __HAL_SPI_DISABLE(_spiHandle);
 
     // We reset the minimum baud rate
     SET_BIT(_spiHandle->Instance->CR1, SPI_CR1_BR);
-    DebugAssert((HAL_RCC_GetPCLK1Freq() / 256.0f) > 100000);
+
+    // SD SPI frequency should be at least 100KHz
+    DebugAssert((HAL_RCC_GetPCLK1Freq() / 256.0f) > SD_MIN_FREQ);
 
     // We don't have to do anything with the CS signal for the moment
 }
@@ -557,6 +549,8 @@ SDStatus FixWithCSDRegister() {
 // ##### Public Function definitions #####
 
 SDStatus SDInitialize(GPIO_TypeDef* powerGPIO, UInt16 powerPin, SPI_HandleTypeDef* spiHandle) {
+    if (powerGPIO == NULL || spiHandle == NULL) return SDStatusInvalidParameter;
+
     _powerGPIO = powerGPIO;
     _powerPin = powerPin;
 
@@ -564,6 +558,26 @@ SDStatus SDInitialize(GPIO_TypeDef* powerGPIO, UInt16 powerPin, SPI_HandleTypeDe
     _nssPin = GPIO_PIN_12;
 
     _spiHandle = spiHandle;
+
+    // SPI assertion (follows initialization order defined in Chapter 28.3.3 of RM0090
+
+    // SPI Simplified specification does not specify the correct polarity and phase
+    // Let's stick to Chan description http://elm-chan.org/docs/mmc/mmc_e.html
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_CPOL) == SPI_POLARITY_LOW);
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_CPHA) == SPI_PHASE_1EDGE);
+    // SPI mode for SD is 8 bit
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_DFF) == SPI_DATASIZE_8BIT);
+    // First bit transferred is MSB
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_LSBFIRST) == SPI_FIRSTBIT_MSB);
+    // Slave select must be managed by software
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_SSM) == SPI_NSS_SOFT);
+    // Slave select must be managed by software
+    DebugAssert((_spiHandle->Instance->CR2 & SPI_CR2_FRF) == SPI_TIMODE_DISABLE);
+    // We are the master of the communication
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_MSTR) != 0);
+    // We are in full duplex mode (2 unidirectional lines)
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_BIDIMODE) == 0);
+    DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_RXONLY) == 0);
 
     // To initialize the SD layer, let's perform a power cycle in case our system where resetted but the SD card didn' t have time to perform
     // the power cycle correctly
@@ -666,7 +680,7 @@ SDStatus SDTryConnect() {
 
 SDStatus SDDisconnect() {
     // Preamble: we shutdown the SPI interface to later re-enabled it
-    ShutdownSDSPIInterface();
+    ShutdownSPIInterface();
     // We leave the NSS high
     HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
 
@@ -778,7 +792,7 @@ void SDDumpStatusCode(SDStatus status) {
 
 SDStatus SDShutdown() {
     // Preamble: we shutdown the SPI interface to later re-enabled it
-    ShutdownSDSPIInterface();
+    ShutdownSPIInterface();
 
     /* Reference specification : Physical Layer Simplified Specification Version 8.00[Section 6.4.1.2] */
 

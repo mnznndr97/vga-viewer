@@ -15,19 +15,21 @@
 #define INC_SD_SD_H_
 
 typedef enum _SDStatus {
-	SDStatusOk = 0, SDStatusCommunicationTimeout = -1,
+	SDStatusOk = 0,
+    SDStatusInvalidParameter = -1,
+    SDStatusCommunicationTimeout = -2,
 	/// An unknown device is responding over the SPI interface
-	SDStatusNotSDCard = -2,
+	SDStatusNotSDCard = -3,
 	/// SD card voltage is not supported
-	SDStatusVoltageNotSupported = -3,
+	SDStatusVoltageNotSupported = -4,
 	/// Initialization timeout
-	SDStatusInitializationTimeout = -4,
+	SDStatusInitializationTimeout = -5,
 	/// CRC of the read data block is not correct
-	SDStatusReadCorrupted = -5,
+	SDStatusReadCorrupted = -6,
 	/// Invalid CSD read from SD card
-	SDStatusInvalidCSD = -6,
+	SDStatusInvalidCSD = -7,
 	/// Invalid CID read from SD card
-	SDStatusInvalidCID = -7
+	SDStatusInvalidCID = -8
 } SDStatus;
 
 typedef enum _SDVersion {
@@ -59,7 +61,7 @@ typedef const SDDescription *PCSDDescription;
 /// Initialize the SD SPI interface using the specified devices
 /// \param powerGPIO Pin that will be used as power (needed due to the power cicle timing requirement)
 /// \param spiHandle Handle to the SPI interface that will be used
-/// \return Operation status. Always should be SDStatusOk
+/// \return Operation status. Always should be SDStatusOk, SDStatusInvalidParameter if a parameter is NULL or out of range
 SDStatus SDInitialize(GPIO_TypeDef *powerGPIO, UInt16 powerPin, SPI_HandleTypeDef *spiHandle);
 
 /// Performs a SD power cycle
@@ -91,7 +93,7 @@ SDStatus SDReadSectors(BYTE* destination, UInt32 sector, UInt32 count);
 void SDDumpStatusCode(SDStatus status);
 
 /// @brief Completly shudown the SPI interface and the the power
-/// @return Status of the operation
+/// @return Status of the operation. Should always be SDStatusOk
 SDStatus SDShutdown();
 
 #endif /* INC_SD_SD_H_ */

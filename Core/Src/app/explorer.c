@@ -11,13 +11,41 @@
 
 static FATFS _fsMountData;
 static FIL _fileHandle;
+
+static BOOL _displayingError;
 const char *const FsRootDirectory = "";
 
-void ExplorerOpen(ScreenBuffer *screenBuffer) {
-	FRESULT mountResult = f_mount(&_fsMountData, FsRootDirectory, 1);
+/* Private section */
 
+void DisplayFResultError(const ScreenBuffer* screenBuffer, FRESULT result, const char* description) {
+    _displayingError = true;
+    Pen pen;
+    pen.color.argb = 0xFF000000;
+
+    // We reset the screen to black
+    ScreenClear(screenBuffer, &pen);
+
+    SizeS stringSize;
+    ScreenMeasureString(description, &stringSize);
+
+    pen.color.argb = 0xFFFF0000;
+    ScreenDrawRectangle(screenBuffer, (PointS) { 0, 150 }, stringSize, & pen);
+
+    pen.color.argb = 0xFFFFFFFF;
+    ScreenDrawString(screenBuffer, description, (PointS) { 0, 150 }, &pen);
+}
+
+/* Public section */
+
+void ExplorerOpen(const ScreenBuffer *screenBuffer) {
+    _displayingError = false;
+
+    DisplayFResultError(screenBuffer, FR_DISK_ERR, "Unable to mount SD CARD");
+    return;
+
+	FRESULT mountResult = f_mount(&_fsMountData, FsRootDirectory, 1);
 	if (mountResult != FR_OK) {
-		Error_Handler();
+		
 	}
 
 	FRESULT openResult = f_open(&_fileHandle, "Natale2_43.raw", FA_READ | FA_OPEN_EXISTING);
@@ -54,6 +82,9 @@ void ExplorerOpen(ScreenBuffer *screenBuffer) {
 }
 
 void ExplorerProcessInput(char command) {
+    // User can do nothing when the app is displayin an error
+    if (_displayingError) return;
+
 }
 
 void ExplorerClose() {

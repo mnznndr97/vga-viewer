@@ -10,7 +10,7 @@
 
 #include <screen/screen.h>
 
-void ExplorerOpen(ScreenBuffer* screenBuffer);
+void ExplorerOpen(const ScreenBuffer* screenBuffer);
 void ExplorerProcessInput(char command);
 void ExplorerClose();
 

@@ -6,12 +6,16 @@
  */
 
 #include <fonts/glyph.h>
+#include <assertion.h>
 
 // Extern variabled declaration
 extern const GlyphMetrics s_glyphs[];
 extern const BYTE *s_glyphsData[];
 
 void GetGlyphOutline(char glyph, PGlyphMetrics metric, PCBYTE *data) {
+    // Let' s make sure our first gkly
+    DebugAssert((((uintptr_t)s_glyphsData) & 0x3) == 0x0);
+
 	*metric = s_glyphs[glyph];
 	*data = s_glyphsData[glyph];
 }

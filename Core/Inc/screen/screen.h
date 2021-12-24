@@ -63,6 +63,7 @@ extern void Error_Handler(void);
 
 void ScreenClear(const ScreenBuffer* buffer, const Pen* pen);
 void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, const Pen *pen);
+void ScreenMeasureString(const char* str, SizeS* size);
 void ScreenDrawString(const ScreenBuffer *buffer, const char* str, PointS point, const Pen *pen);
 
 /// Lower lever abstraction API for drawing a single pixel on the screen using the underlying hardware API

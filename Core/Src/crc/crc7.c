@@ -10,6 +10,11 @@
 
 static uint8_t CRCTable[256];
 
+#if _DEBUG
+/// Super simple bebug initialization flag. If we forgot to call the Initialize function, the assertion in the Add method will fail
+static uint8_t _initialized = 0;
+#endif
+
 void Crc7Initialize() {
 	// SD CRC polinomial is x^7 + x^3 + 1 (in binary 0b10001001)
 	const uint8_t Poly = 0x89;
@@ -29,9 +34,16 @@ void Crc7Initialize() {
 		// CRC7 MSB should always be 0 per algorithm
 		DebugAssert((CRCTable[i] & 0x80) == 0);
 	}
+
+#if _DEBUG
+    _initialized = 1;
+#endif
 }
 
 uint8_t Crc7Add(uint8_t crc, uint8_t data) {
+#if _DEBUG
+    DebugAssert(_initialized != 0);
+#endif
 	// To cumulate the CRC, we shift it (MSB should be 0 so we don't need to perform XOR with the Poly)
 	// since new data is entering in the cycle and we compute the XOR with the data value
 
