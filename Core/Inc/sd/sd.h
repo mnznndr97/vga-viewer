@@ -16,20 +16,34 @@
 
 typedef enum _SDStatus {
 	SDStatusOk = 0,
-    SDStatusInvalidParameter = -1,
-    SDStatusCommunicationTimeout = -2,
+    SDStatusErrorUnknown = -1,
+    SDStatusInvalidParameter = -2,
+    SDStatusCommunicationTimeout = -3,
 	/// An unknown device is responding over the SPI interface
-	SDStatusNotSDCard = -3,
+	SDStatusNotSDCard = -4,
 	/// SD card voltage is not supported
-	SDStatusVoltageNotSupported = -4,
+	SDStatusVoltageNotSupported = -5,
 	/// Initialization timeout
-	SDStatusInitializationTimeout = -5,
-	/// CRC of the read data block is not correct
-	SDStatusReadCorrupted = -6,
+	SDStatusInitializationTimeout = -6,
+    /// CRC for the command is not valid
+    SDStatusCRCError = -7,
+	/// Command not recognized
+	SDStatusIllegalCommand = -8,
+    /// Address not aligned at block boundaries provided
+    SDStatusMisalignedAddress = -9,
+    /// Provided parameter outside the valid range (ex out of bound address)
+    SDStatusParameterOutOfRange = -10,
 	/// Invalid CSD read from SD card
-	SDStatusInvalidCSD = -7,
+	SDStatusInvalidCSD = -11,
 	/// Invalid CID read from SD card
-	SDStatusInvalidCID = -8
+	SDStatusInvalidCID = -12,
+    /// CRC of the read data block is not correct
+    SDStatusReadCorrupted = -13,
+    /// Read operation reported a Card Controller Error
+    SDStatusReadCCError = -14,
+    /// Data operation reported a failed ECC correction
+    SDStatusECCFailed = -15,
+
 } SDStatus;
 
 typedef enum _SDVersion {

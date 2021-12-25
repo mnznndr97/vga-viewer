@@ -13,7 +13,7 @@ extern const GlyphMetrics s_glyphs[];
 extern const BYTE *s_glyphsData[];
 
 void GetGlyphOutline(char glyph, PGlyphMetrics metric, PCBYTE *data) {
-    // Let' s make sure our first gkly
+    // Let' s make sure our first glyph buffer is aligned at word boundary
     DebugAssert((((uintptr_t)s_glyphsData) & 0x3) == 0x0);
 
 	*metric = s_glyphs[glyph];

@@ -69,13 +69,14 @@ typedef enum _SDClasses {
 /// @param pCSD Valid pointer to the CSD register
 /// @return Version of the CSD
 SDCSDVersion SDCSDGetVersion(PCCSDRegister pCSD);
+UInt32 SDCSDGetMaxTransferRate(PCCSDRegister pCSD);
+UInt16 SDCSDGetMaxReadDataBlockLength(PCCSDRegister pCSD);
+
+void SDCSDDumpValidationResult(SDCSDValidation result);
 
 /// Validates a pointer to a CSD register
 /// @param pCSD 
 /// @return Status of the CSD validation
 SDCSDValidation SDCSDValidate(PCCSDRegister pCSD);
-
-UInt32 SDCSDGetMaxTransferRate(PCCSDRegister pCSD);
-UInt16 SDCSDGetMaxReadDataBlockLength(PCCSDRegister pCSD);
 
 #endif /* INC_SD_CSD_H_ */

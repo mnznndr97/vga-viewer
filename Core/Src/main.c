@@ -99,7 +99,7 @@ const osThreadAttr_t vgaConnectionTa_attributes = {
 osThreadId_t _mainTaskHandle;
 const osThreadAttr_t _mainTask_attributes = {
   .name = "_mainTask",
-  .stack_size = 208 * 4,
+  .stack_size = 300 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for _vgaEDIDRcvEvnt */
@@ -302,7 +302,7 @@ int main(void)
 	// We need to disable the io buffering to have the data directly sended
 	setvbuf(stdout, NULL, _IONBF, 0);
 	Crc7Initialize();
-    Crc16Initialize();
+	Crc16Initialize();
 
 	SET_BIT(DBGMCU->APB1FZ, DBGMCU_APB1_FZ_DBG_TIM4_STOP);
 	SET_BIT(SCB->CCR, SCB_CCR_UNALIGN_TRP_Msk);

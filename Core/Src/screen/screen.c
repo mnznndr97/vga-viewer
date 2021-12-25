@@ -212,8 +212,11 @@ void ScreenMeasureString(const char* str, SizeS* size) {
         GetGlyphOutline(str[i], &charMetrics, &glyphBufferPtr);
 
         size->height = MAX(size->height, charMetrics.blackBoxY);
-        size->width += charMetrics.blackBoxX + charMetrics.cellIncX;
+        size->width += charMetrics.cellIncX;
     }
+
+    /*size->width -= charMetrics.cellIncX;
+    size->width += charMetrics.blackBoxX + charMetrics.glyphOrigin.x;*/
 }
 
 void ScreenDrawString(const ScreenBuffer *buffer, const char *str, PointS point, const Pen *pen) {
