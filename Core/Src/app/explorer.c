@@ -12,6 +12,7 @@
 #include <assertion.h>
 #include "fatfs.h"
 #include <binary.h>
+#include <app/bmp.h>
 
 #define FORMAT_BUFFER_SIZE 120
 
@@ -19,6 +20,7 @@ static FATFS _fsMountData;
 static DIR _dirHandle;
 static FILINFO _fileInfoHandle;
 static FIL _fileHandle;
+static Bmp _bmpHandle;
 
 static ScreenBuffer *_screenBuffer;
 
@@ -168,6 +170,23 @@ void DisplayStartupMessage(const ScreenBuffer *screenBuffer) {
 	ScreenDrawString(screenBuffer, message, (PointS ) { xPos, vStartingPoint }, &pen);
 }
 
+void DrawSelectedFile() {
+	FRESULT openResult = f_open(&_fileHandle, _fileListSelectedFile.fname, FA_READ | FA_OPEN_EXISTING);
+	if (openResult != FR_OK) {
+		DisplayFResultError(_screenBuffer, openResult, "Unable to open file");
+		return;
+	}
+
+	BmpResult result = BmpReadFromFile(&_fileHandle, &_bmpHandle);
+	if (result != BmpResultOk) {
+		goto cleanup;
+	}
+
+	BmpDisplay(&_bmpHandle, _screenBuffer);
+
+	cleanup: f_close(&_fileHandle);
+}
+
 void DrawSelectedRawFile() {
 	FRESULT openResult = f_open(&_fileHandle, _fileListSelectedFile.fname, FA_READ | FA_OPEN_EXISTING);
 	if (openResult != FR_OK) {
@@ -237,10 +256,6 @@ void DrawFileList() {
 			continue;
 		}
 
-		if (!EndsWith(_fileInfoHandle.fname, ".raw")) {
-			continue;
-		}
-
 		PointS nameDrawPoint = rowPoint;
 		nameDrawPoint.x += rowPadding;
 
@@ -273,7 +288,7 @@ void ExplorerOpen(const ScreenBuffer *screenBuffer) {
 	_displayingError = false;
 
 	DisplayStartupMessage(screenBuffer);
-	memchr(&_fileListSelectedFile, 0, sizeof(FILINFO));
+	memset(&_fileListSelectedFile, 0, sizeof(FILINFO));
 
 	FRESULT mountResult = f_mount(&_fsMountData, FsRootDirectory, 1);
 	if (mountResult != FR_OK) {
@@ -298,7 +313,7 @@ void ExplorerProcessInput(char command) {
 	} else if (command == '\b') {
 		DrawFileList();
 	} else if (command == '\r' || command == '\n' || command == ' ') {
-		DrawSelectedRawFile();
+		DrawSelectedFile();
 	}
 
 }

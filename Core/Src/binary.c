@@ -21,6 +21,38 @@ UInt32 U32ChangeEndiannes(UInt32 little) {
         ((little) & 0x000000FF));
 }
 
+UInt32 ReadUInt32(BYTE* pBuffer)
+{
+    if ((((uintptr_t)pBuffer) & 0x3) == 0) {
+        // Buffer is aligned at word boundary. We cano load the int32 directly
+        return *((UInt32*)pBuffer);
+    }
+    else
+    {
+        // Buffer not aligned
+        return (UInt32)(
+            ((((UInt32)pBuffer[3]) << 24) & 0xFF000000) |
+            ((((UInt32)pBuffer[2]) << 16) & 0x00FF0000) |
+            ((((UInt32)pBuffer[1]) << 8) & 0x0000FF00) |
+            ((((UInt32)pBuffer[0])) & 0x000000FF));
+    }
+}
+
+UInt16 ReadUInt16(BYTE* pBuffer)
+{
+    if ((((uintptr_t)pBuffer) & 0x1) == 0) {
+        // Buffer is aligned at half word boundary. We cano load the int32 directly
+        return *((UInt16*)pBuffer);
+    }
+    else
+    {
+        // Buffer not aligned
+        return (UInt16)(
+            ((((UInt16)pBuffer[1]) << 8) & 0xFF00) |
+            ((((UInt16)pBuffer[0]))));
+    }
+}
+
 
 int EndsWith(const char* str, const char* suffix)
 {
