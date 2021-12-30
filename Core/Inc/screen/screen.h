@@ -12,6 +12,9 @@
 
 #include <typedefs.h>
 
+#define SCREEN_RGB(r, b, g) ((0xFF000000) | (((r) & 0xFF) << 16) | (((g) & 0xFF) << 8) | ((b) & 0xFF))
+#define SCREEN_ARGB(a, r, b, g) ((((a) & 0xFF) << 24) | (((r) & 0xFF) << 16) | (((g) & 0xFF) << 8) | ((b) & 0xFF))
+
 typedef enum _Bpp {
 	Bpp3, Bpp8
 } Bpp;
@@ -63,6 +66,8 @@ extern void Error_Handler(void);
 
 void ScreenClear(const ScreenBuffer* buffer, const Pen* pen);
 void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, const Pen *pen);
+/// Returns the max height that a character can have in the screen
+UInt16 ScreenGetCharMaxHeight();
 void ScreenMeasureString(const char* str, SizeS* size);
 void ScreenDrawString(const ScreenBuffer *buffer, const char* str, PointS point, const Pen *pen);
 

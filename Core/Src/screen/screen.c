@@ -191,32 +191,48 @@ void ScreenDrawRectangle(const ScreenBuffer *buffer, PointS point, SizeS size, c
 	DebugWriteChar('e');
 }
 
-void ScreenMeasureString(const char* str, SizeS* size) {
-    if (size == NULL) return;
+UInt16 ScreenGetCharMaxHeight() {
+	UInt16 size = 0;
 
-    size->height = 0;
-    size->width = 0;
-    // This is not safe but our project is just display some stuff on the screen, there is not
-    // sensible data in it. It may still be hacked though
-    int stringLength = strlen(str);
-    if (stringLength <= 0) {
-        // Nothing to draw
-        return;
-    }
+	// Super simple loop here
+	// For each character in our string we get the metric 
+	GlyphMetrics charMetrics;
+	PCBYTE glyphBufferPtr;
+	for (char i = 0; i < 0x80; i++) {
+		GetGlyphOutline(i, &charMetrics, &glyphBufferPtr);
 
-    // Super simple loop here
-    // For each character in our string we get the metric 
-    GlyphMetrics charMetrics;
-    PCBYTE glyphBufferPtr;
-    for (int i = 0; i < stringLength; i++) {
-        GetGlyphOutline(str[i], &charMetrics, &glyphBufferPtr);
+		size = MAX(size, charMetrics.blackBoxY);
+	}
+	return size;
+}
 
-        size->height = MAX(size->height, charMetrics.blackBoxY);
-        size->width += charMetrics.cellIncX;
-    }
+void ScreenMeasureString(const char *str, SizeS *size) {
+	if (size == NULL)
+		return;
 
-    /*size->width -= charMetrics.cellIncX;
-    size->width += charMetrics.blackBoxX + charMetrics.glyphOrigin.x;*/
+	size->height = 0;
+	size->width = 0;
+	// This is not safe but our project is just display some stuff on the screen, there is not
+	// sensible data in it. It may still be hacked though
+	int stringLength = strlen(str);
+	if (stringLength <= 0) {
+		// Nothing to draw
+		return;
+	}
+
+	// Super simple loop here
+	// For each character in our string we get the metric 
+	GlyphMetrics charMetrics;
+	PCBYTE glyphBufferPtr;
+	for (int i = 0; i < stringLength; i++) {
+		GetGlyphOutline(str[i], &charMetrics, &glyphBufferPtr);
+
+		size->height = MAX(size->height, charMetrics.blackBoxY + charMetrics.glyphOrigin.y);
+		size->width += charMetrics.cellIncX;
+	}
+
+	/*size->width -= charMetrics.cellIncX;
+	 size->width += charMetrics.blackBoxX + charMetrics.glyphOrigin.x;*/
 }
 
 void ScreenDrawString(const ScreenBuffer *buffer, const char *str, PointS point, const Pen *pen) {

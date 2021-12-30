@@ -11,11 +11,19 @@
 #include <stdio.h>
 #include <assertion.h>
 #include "fatfs.h"
+#include <binary.h>
 
 #define FORMAT_BUFFER_SIZE 120
 
 static FATFS _fsMountData;
+static DIR _dirHandle;
+static FILINFO _fileInfoHandle;
 static FIL _fileHandle;
+
+static ScreenBuffer *_screenBuffer;
+
+static UInt32 _fileListSelectedRow = 0;
+static FILINFO _fileListSelectedFile;
 
 static BOOL _displayingError;
 const char *const FsRootDirectory = "";
@@ -135,38 +143,137 @@ void DisplayFResultError(const ScreenBuffer *screenBuffer, FRESULT result, const
 	ScreenDrawString(screenBuffer, errorFormatBuffer, (PointS ) { errXPos, vStartingPoint }, &pen);
 }
 
-void DisplayStartupMessage(const ScreenBuffer* screenBuffer) {
-    _displayingError = true;
-    Pen pen = { 0 };
+void DisplayStartupMessage(const ScreenBuffer *screenBuffer) {
+	Pen pen = { 0 };
 
-    const char* message = "Mounting SD card ...";
+	const char *message = "Mounting SD card ...";
 
-    SizeS msgSize;
-    ScreenMeasureString(message, &msgSize);
-    
-    msgSize.height += 4;
-    UInt16 vStartingPoint = (screenBuffer->screenSize.height / 2) - ((msgSize.height) / 2);
+	SizeS msgSize;
+	ScreenMeasureString(message, &msgSize);
 
-    // We reset the screen to black
-    pen.color.argb = 0xFF000000;
-    ScreenClear(screenBuffer, &pen);
+	msgSize.height += 4;
+	UInt16 vStartingPoint = (screenBuffer->screenSize.height / 2) - ((msgSize.height) / 2);
 
-    UInt16 xPos = (screenBuffer->screenSize.width / 2) - (msgSize.width / 2);
-    
-    pen.color.argb = 0xFF28B5F4;
-    ScreenDrawRectangle(screenBuffer, (PointS) { xPos, vStartingPoint }, msgSize, & pen);
-    
-    pen.color.argb = 0xFFFFFFFF;
-    vStartingPoint += 2;
-    ScreenDrawString(screenBuffer, message, (PointS) { xPos, vStartingPoint }, & pen);
+	// We reset the screen to black
+	pen.color.argb = 0xFF000000;
+	ScreenClear(screenBuffer, &pen);
+
+	UInt16 xPos = (screenBuffer->screenSize.width / 2) - (msgSize.width / 2);
+
+	pen.color.argb = 0xFF28B5F4;
+	ScreenDrawRectangle(screenBuffer, (PointS ) { xPos, vStartingPoint }, msgSize, &pen);
+
+	pen.color.argb = 0xFFFFFFFF;
+	vStartingPoint += 2;
+	ScreenDrawString(screenBuffer, message, (PointS ) { xPos, vStartingPoint }, &pen);
+}
+
+void DrawSelectedRawFile() {
+	FRESULT openResult = f_open(&_fileHandle, _fileListSelectedFile.fname, FA_READ | FA_OPEN_EXISTING);
+	if (openResult != FR_OK) {
+		DisplayFResultError(_screenBuffer, openResult, "Unable to open file");
+		return;
+	}
+
+	Pen pen;
+	pen.color.argb = SCREEN_RGB(0, 0, 0);
+	ScreenClear(_screenBuffer, &pen);
+
+	UINT read;
+	pen.color.components.A = 0xFF;
+	PointS point;
+	for (size_t line = 0; line < 300; line++) {
+		point.y = line;
+
+		for (size_t j = 0; j < 400; j++) {
+			UInt32 color = 0;
+			BYTE *pColor = (BYTE*) &color;
+
+			FRESULT readResult = f_read(&_fileHandle, pColor, 3, &read);
+			DebugAssert(read == 3);
+
+			pen.color.components.R = pColor[0];
+			pen.color.components.G = pColor[1];
+			pen.color.components.B = pColor[2];
+			if (readResult != FR_OK) {
+				Error_Handler();
+			}
+
+			point.x = j;
+			ScreenDrawPixel(_screenBuffer, point, &pen);
+		}
+	}
+
+	f_close(&_fileHandle);
+}
+
+void DrawFileList() {
+	Pen pen;
+	pen.color.argb = SCREEN_RGB(0, 0, 0);
+
+	ScreenClear(_screenBuffer, &pen);
+
+	FRESULT openResult = f_opendir(&_dirHandle, FsRootDirectory);
+	if (openResult != FR_OK) {
+		DisplayFResultError(_screenBuffer, openResult, "Unable to open root dir");
+		return;
+	}
+	const BYTE rowPadding = 3;
+	UInt32 rowSize = ScreenGetCharMaxHeight() + (rowPadding * 2);
+
+	pen.color.argb = SCREEN_RGB(0xb2, 0xdf, 0xdb);
+
+	PointS rowPoint = { 0 };
+
+	rowPoint.x += rowPadding; // let's start with a little offset to not draw directly on the border
+	FRESULT dirReadResult = FR_OK;
+	int fileIndex = 0;
+	while ((rowPoint.y + rowSize < _screenBuffer->screenSize.height) && // Row in screen bound
+			((dirReadResult = f_readdir(&_dirHandle, &_fileInfoHandle)) == FR_OK) && // No Error
+			strlen(_fileInfoHandle.fname) > 0) // Enumeration not ended
+	{
+		if ((_fileInfoHandle.fattrib & AM_DIR) || (_fileInfoHandle.fattrib & AM_SYS) || (_fileInfoHandle.fattrib & AM_HID)) {
+			// Not for us
+			continue;
+		}
+
+		if (!EndsWith(_fileInfoHandle.fname, ".raw")) {
+			continue;
+		}
+
+		PointS nameDrawPoint = rowPoint;
+		nameDrawPoint.x += rowPadding;
+
+		if (fileIndex == _fileListSelectedRow) {
+			memcpy(&_fileListSelectedFile, &_fileInfoHandle, sizeof(FILINFO));
+			UInt32 originalPenColor = pen.color.argb;
+			SizeS stringRectSize;
+			ScreenMeasureString(_fileInfoHandle.fname, &stringRectSize);
+
+			ScreenDrawRectangle(_screenBuffer, rowPoint, stringRectSize, &pen);
+			pen.color.argb = SCREEN_RGB(0xFF, 0xFF, 0xFF);
+
+			ScreenDrawString(_screenBuffer, _fileInfoHandle.fname, nameDrawPoint, &pen);
+			pen.color.argb = originalPenColor;
+		} else {
+
+			ScreenDrawString(_screenBuffer, _fileInfoHandle.fname, nameDrawPoint, &pen);
+		}
+		rowPoint.y += rowSize;
+		++fileIndex;
+	}
+
+	f_closedir(&_dirHandle);
 }
 
 /* Public section */
 
 void ExplorerOpen(const ScreenBuffer *screenBuffer) {
+	_screenBuffer = screenBuffer;
 	_displayingError = false;
 
-    DisplayStartupMessage(screenBuffer);
+	DisplayStartupMessage(screenBuffer);
+	memchr(&_fileListSelectedFile, 0, sizeof(FILINFO));
 
 	FRESULT mountResult = f_mount(&_fsMountData, FsRootDirectory, 1);
 	if (mountResult != FR_OK) {
@@ -174,37 +281,7 @@ void ExplorerOpen(const ScreenBuffer *screenBuffer) {
 		return;
 	}
 
-	FRESULT openResult = f_open(&_fileHandle, "Natale2_43.raw", FA_READ | FA_OPEN_EXISTING);
-	if (openResult != FR_OK) {
-		Error_Handler();
-	}
-
-	Pen pen;
-	BYTE rgb[3];
-	UINT read;
-
-	pen.color.components.A = 0xFF;
-	PointS point;
-	for (size_t line = 0; line < 300; line++) {
-		point.y = line;
-
-		for (size_t j = 0; j < 400; j++) {
-			FRESULT readResult = f_read(&_fileHandle, &rgb, 3, &read);
-			DebugAssert(read == 3);
-			if (readResult != FR_OK) {
-				Error_Handler();
-			}
-
-			pen.color.components.R = rgb[0];
-			pen.color.components.G = rgb[1];
-			pen.color.components.B = rgb[2];
-
-			point.x = j;
-			ScreenDrawPixel(screenBuffer, point, &pen);
-		}
-	}
-
-	f_close(&_fileHandle);
+	DrawFileList();
 }
 
 void ExplorerProcessInput(char command) {
@@ -212,8 +289,21 @@ void ExplorerProcessInput(char command) {
 	if (_displayingError)
 		return;
 
+	if (command == '+') {
+		++_fileListSelectedRow;
+		DrawFileList();
+	} else if (command == '-') {
+		--_fileListSelectedRow;
+		DrawFileList();
+	} else if (command == '\b') {
+		DrawFileList();
+	} else if (command == '\r' || command == '\n' || command == ' ') {
+		DrawSelectedRawFile();
+	}
+
 }
 
 void ExplorerClose() {
 	f_mount(NULL, FsRootDirectory, 0);
+	_screenBuffer = NULL;
 }
