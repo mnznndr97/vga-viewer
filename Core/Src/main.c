@@ -57,7 +57,7 @@ typedef enum _MainApplicationRunning {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-/// Event flag for EDID success read from I2C channel
+/// Event flag for Edid success read from I2C channel
 #define I2CVGA_EDID_RECEIVED 0x00000001
 #define I2CVGA_EDID_ERROR 0x00000002
 
@@ -99,7 +99,7 @@ osEventFlagsId_t _vgaEDIDRcvEvntHandle;
 const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = { .name = "_vgaEDIDRcvEvnt" };
 /* USER CODE BEGIN PV */
 
-static EDID _vgaEDID = { 0 };
+static Edid _vgaEDID = { 0 };
 static ScreenBuffer *_screenBuffer = NULL;
 static VGAVisualizationInfo _visualizationInfos = { 0 };
 
@@ -945,7 +945,7 @@ bool IsVGAStillConnected() {
 	_vgaCheckLastTick = currentHalTick;
 
 	// Time to check if the VGA is still connected. There is no "standard" input signal on the VGA so we backoff to our VGA I2C connection
-	// If the EDID slave address is not available, the cable is probably disconnected (or the monitor is completly switched off)
+	// If the Edid slave address is not available, the cable is probably disconnected (or the monitor is completly switched off)
 
 	HAL_StatusTypeDef deviceAliveResult = HAL_I2C_IsDeviceReady(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, I2CVGA_CHECK_RETRIES, I2CVGA_CHECK_TIMEOUT);
 	return deviceAliveResult == HAL_OK;
@@ -988,7 +988,7 @@ void ConnecToVGATask(void *argument) {
 
 		// First step: enable the per and launch the Rcv command with the interrupts enabled
 		__HAL_I2C_ENABLE(&hi2c2);
-		HAL_StatusTypeDef halStatus = HAL_I2C_Master_Receive_IT(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, (uint8_t*) &_vgaEDID, sizeof(EDID));
+		HAL_StatusTypeDef halStatus = HAL_I2C_Master_Receive_IT(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, (uint8_t*) &_vgaEDID, sizeof(Edid));
 		if (halStatus == HAL_ERROR && (hi2c2.ErrorCode & HAL_I2C_ERROR_TIMEOUT) != 0) {
 			// If the HAL_ERROR is flagged with the timeout, the bus is busy. We can't do anything.
 			printf("Unable to initialize VGA I2C transmission. Nothing connected (bus busy)\r\n");
@@ -1015,13 +1015,13 @@ void ConnecToVGATask(void *argument) {
 			continue;
 		}
 
-		if (!EDIDIsChecksumValid(&_vgaEDID)) {
-			printf("\033[1;33mVGA EDID checksum is not valid. Cannot connect\033[0m\r\n");
+		if (!EdidIsChecksumValid(&_vgaEDID)) {
+			printf("\033[1;33mVGA Edid checksum is not valid. Cannot connect\033[0m\r\n");
 			continue;
 		}
 
 		printf("\033[1;92mVGA connected\033[0m\r\n");
-		EDIDDumpStructure(&_vgaEDID);
+		EdidDumpStructure(&_vgaEDID);
 
 		_visualizationInfos.FrameSignals = VideoFrame800x600at60Hz;
 		_visualizationInfos.BitsPerPixel = Bpp3;

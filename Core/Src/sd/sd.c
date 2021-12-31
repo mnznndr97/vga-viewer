@@ -631,7 +631,7 @@ SDStatus SDInitialize(GPIO_TypeDef* powerGPIO, UInt16 powerPin, SPI_HandleTypeDe
 
     _spiHandle = spiHandle;
 
-    // SPI assertion (follows initialization order defined in Chapter 28.3.3 of RM0090
+    // SPI assertion (follows initialization order defined in Chapter 28.3.3 of RM0090)
 
     // SPI Simplified specification does not specify the correct polarity and phase
     // Let's stick to Chan description http://elm-chan.org/docs/mmc/mmc_e.html
@@ -651,8 +651,6 @@ SDStatus SDInitialize(GPIO_TypeDef* powerGPIO, UInt16 powerPin, SPI_HandleTypeDe
     DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_BIDIMODE) == 0);
     DebugAssert((_spiHandle->Instance->CR1 & SPI_CR1_RXONLY) == 0);
 
-    // To initialize the SD layer, let's perform a power cycle in case our system where resetted but the SD card didn' t have time to perform
-    // the power cycle correctly
     return SDStatusOk;
 }
 
