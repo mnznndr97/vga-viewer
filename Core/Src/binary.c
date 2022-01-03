@@ -15,34 +15,35 @@ UInt16 U16ChangeEndiannes(UInt16 little) {
 
 UInt32 U32ChangeEndiannes(UInt32 little) {
     return (UInt32)(
-        ((little << 24) & 0xFF000000) |
-        ((little << 16) & 0x00FF0000) |
-        ((little << 8) & 0x0000FF00) |
-        ((little) & 0x000000FF));
+        ((little >> 24) & 0x000000FF) | // MSB becomes LSB
+        ((little >> 8) & 0x0000FF00) | 
+        ((little << 8) & 0x00FF0000) |
+        ((little << 24) & 0xFF000000)); // LSB becomes MSB
 }
 
-UInt32 ReadUInt32(BYTE* pBuffer)
+UInt32 ReadUInt32(const BYTE* pBuffer)
 {
-    if ((((uintptr_t)pBuffer) & 0x3) == 0) {
-        // Buffer is aligned at word boundary. We cano load the int32 directly
-        return *((UInt32*)pBuffer);
+    uintptr_t address = (uintptr_t)pBuffer;
+    if ((address & 0x3) == 0) {
+        // Buffer is aligned at word boundary. We can load the int32 directly
+        return *((const UInt32*)pBuffer);
     }
     else
     {
-        // Buffer not aligned
-        return (UInt32)(
-            ((((UInt32)pBuffer[3]) << 24) & 0xFF000000) |
-            ((((UInt32)pBuffer[2]) << 16) & 0x00FF0000) |
-            ((((UInt32)pBuffer[1]) << 8) & 0x0000FF00) |
-            ((((UInt32)pBuffer[0])) & 0x000000FF));
+        UInt32 result = (UInt32)pBuffer[0]; // LSB
+        result |= ((UInt32)pBuffer[1]) << 8;
+        result |= ((UInt32)pBuffer[2]) << 16;
+        result |= ((UInt32)pBuffer[3]) << 24;
+        return result;
     }
 }
 
-UInt16 ReadUInt16(BYTE* pBuffer)
+UInt16 ReadUInt16(const BYTE* pBuffer)
 {
-    if ((((uintptr_t)pBuffer) & 0x1) == 0) {
+    uintptr_t address = (uintptr_t)pBuffer;
+    if ((address & 0x1) == 0) {
         // Buffer is aligned at half word boundary. We cano load the int32 directly
-        return *((UInt16*)pBuffer);
+        return *((const UInt16*)pBuffer);
     }
     else
     {

@@ -29,13 +29,13 @@
 /// \remarks The enumeration value maps directly to the value that can be found in the Edid
 typedef enum _EdidAnalogVoltage {
 	/// Analog voltage level = +0.7/-0.3 V 
-	EdidAVoltage0p7Tom0p3 = 0, 
-    /// Analog voltage level = +0.714/-0.286 V 
-    EdidAVoltage0p714Tom0p286 = 1, 
-    /// Analog voltage level = +1.0/-0.4 V 
-    EdidAVoltage1p0Tom0p4 = 2,
-    /// Analog voltage level = +0.7/0 V (EVC)
-    EdidAVoltage0p7To0p0 = 3
+	EdidAVoltage0p7Tom0p3 = 0,
+	/// Analog voltage level = +0.714/-0.286 V 
+	EdidAVoltage0p714Tom0p286 = 1,
+	/// Analog voltage level = +1.0/-0.4 V 
+	EdidAVoltage1p0Tom0p4 = 2,
+	/// Analog voltage level = +0.7/0 V (EVC)
+	EdidAVoltage0p7To0p0 = 3
 } EdidAnalogVoltage;
 
 typedef enum _EDIDTiming {
@@ -57,8 +57,8 @@ typedef struct _EdidAnalogInput {
 	BYTE SyncOnGreenSupported :1;
 	BYTE CompositeSyncSupported :1;
 	BYTE SeparateSyncSupported :1;
-    /// Blank-to-black setup (pedestal) expected 
-    BYTE BlankToBlackExpected :1;
+	/// Blank-to-black setup (pedestal) expected 
+	BYTE BlankToBlackExpected :1;
 	/// Video white and sync levels, relative to blank. Maps to EdidAnalogVoltage
 	BYTE VoltageLevel :2;
 	BYTE IsDigitalInput :1;
@@ -81,7 +81,7 @@ typedef struct _EdidTimingInformation {
 	BYTE AspectRatio :2;
 } EdidTimingInformation;
 
-/// @brief 10-bit 2° CIE 1931 xy coordinates for red, green, blue, and white point 
+/// @brief 10-bit 2ï¿½ CIE 1931 xy coordinates for red, green, blue, and white point 
 /// \remarks Not implemented
 typedef struct _EdidChromaticityCoordinates {
 	BYTE Data[10];
@@ -262,7 +262,8 @@ inline Int32 EdidDtdGetVerticalImageSize(const EdidDetailedTimingDescriptor *det
 void EdidDumpStructure(const Edid *edid);
 
 static void __staticasserts() {
-    // Internal static assert to check out EDID structure layout matches the specification
+	SUPPRESS_WARNING(__staticasserts);
+	// Internal static assert to check out EDID structure layout matches the specification
 	static_assert(sizeof(EdidManufacturerID) == 2, "EdidManufacturerID is not of size 2 bytes");
 	static_assert(sizeof(EdidDigitalInput) == 1, "EdidDigitalInput is not of size 1 bytes");
 	static_assert(sizeof(EdidAnalogInput) == 1, "EdidAnalogInput is not of size 1 bytes");
@@ -296,8 +297,8 @@ static void __staticasserts() {
 	static_assert(offsetof(EdidDetailedTimingDescriptor, HBorderPixels) == 15);
 	static_assert(offsetof(EdidDetailedTimingDescriptor, VBorderLines) == 16);
 
-    static_assert(sizeof(Edid) == 128);
-    static_assert(offsetof(Edid, Header) == 0);
+	static_assert(sizeof(Edid) == 128);
+	static_assert(offsetof(Edid, Header) == 0);
 	static_assert(offsetof(Edid, BasicDisplayParameters) == 20);
 	static_assert(offsetof(Edid, ChromaticityCoordinates) == 25);
 	static_assert(offsetof(Edid, EstablishedTimingBitmap) == 35);

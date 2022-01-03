@@ -43,11 +43,17 @@
     <NMakePreprocessorDefinitions>USE_HAL_DRIVER;STM32F407xx;__CC_ARM;CUSTOMASSERT;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
     <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)FATFS\Target;$(ProjectDir)Middlewares\Third_Party\FatFs\src;$(ProjectDir)FATFS\App;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <AdditionalOptions>-Wall -pedantic -Wconversion</AdditionalOptions>
+    <NMakeBuildCommandLine>
+    </NMakeBuildCommandLine>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
     <NMakePreprocessorDefinitions>USE_HAL_DRIVER;STM32F407xx;__CC_ARM;CUSTOMASSERT;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Drivers\CMSIS\Include;$(NMakeIncludeSearchPath)</NMakeIncludeSearchPath>
     <IncludePath>$(ProjectDir)Core\Inc;$(ProjectDir)Drivers\STM32F4xx_HAL_Driver\Inc;$(ProjectDir)Drivers\CMSIS\Device\ST\STM32F4xx\Include;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\CMSIS_RTOS_V2;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM4F;$(ProjectDir)Middlewares\Third_Party\FreeRTOS\Source\include;$(ProjectDir)FATFS\Target;$(ProjectDir)Middlewares\Third_Party\FatFs\src;$(ProjectDir)FATFS\App;$(ProjectDir)Drivers\CMSIS\Include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <AdditionalOptions>-Wall -pedantic -Wconversion</AdditionalOptions>
+    <NMakeBuildCommandLine>
+    </NMakeBuildCommandLine>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>
@@ -80,7 +86,6 @@
     <ClCompile Include="core\src\main.c" />
     <ClCompile Include="Core\Src\ram.c" />
     <ClCompile Include="core\src\screen\screen.c" />
-    <ClCompile Include="Core\Src\sd\cid.c" />
     <ClCompile Include="Core\Src\sd\csd.c" />
     <ClCompile Include="Core\Src\sd\sd.c" />
     <ClCompile Include="core\src\stm32f4xx_hal_msp.c" />
@@ -150,7 +155,6 @@
     <ClInclude Include="core\inc\main.h" />
     <ClInclude Include="Core\Inc\ram.h" />
     <ClInclude Include="core\inc\screen\screen.h" />
-    <ClInclude Include="Core\Inc\sd\cid.h" />
     <ClInclude Include="Core\Inc\sd\csd.h" />
     <ClInclude Include="Core\Inc\sd\ocr.h" />
     <ClInclude Include="Core\Inc\sd\sd.h" />

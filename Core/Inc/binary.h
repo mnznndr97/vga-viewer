@@ -13,8 +13,8 @@
 UInt16 U16ChangeEndiannes(UInt16 little);
 UInt32 U32ChangeEndiannes(UInt32 little);
 
-UInt32 ReadUInt32(BYTE* pBuffer);
-UInt16 ReadUInt16(BYTE* pBuffer);
+UInt32 ReadUInt32(const BYTE* pBuffer);
+UInt16 ReadUInt16(const BYTE* pBuffer);
 
 int EndsWith(const char *str, const char *suffix);
 

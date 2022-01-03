@@ -12,6 +12,8 @@
 #include <inttypes.h>
 #include <assert.h>
 
+#define SUPPRESS_WARNING(a) (void)a
+
 void DebugAssert(bool condition);
 
 /// \brief Writes a single characted on the device debug port

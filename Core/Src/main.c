@@ -335,8 +335,8 @@ int main(void) {
 #endif
 	printf("\r\n");
 
-	SDStatus status;
-	if ((status = SDInitialize(GPIOC, GPIO_PIN_1, &hspi2)) != SDStatusOk) {
+	SdStatus status;
+	if ((status = SdInitialize(GPIOC, GPIO_PIN_1, &hspi2)) != SdStatusOk) {
 		// SD initialization should never return an error.
 		Error_Handler();
 	}
@@ -854,7 +854,7 @@ void HandleUserInput() {
 	_userCommandReceivedFlag = 0;
 
 	IssueUserInputReadWithIT();
-	if (receivedCommand == '\e') {
+	if (receivedCommand == '\033') {
 		if (_currentRunningApp == AppPalette) {
 			AppPaletteClose();
 		} else if (_currentRunningApp == AppExplorer) {

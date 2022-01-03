@@ -14,7 +14,6 @@
 
 // ##### Internal forward declarations #####
 
-enum VGAOutputState;
 typedef struct _VGAScreenBuffer VGAScreenBuffer;
 
 // ##### Public struct and enums declarations #####

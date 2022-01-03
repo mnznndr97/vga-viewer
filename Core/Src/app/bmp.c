@@ -106,6 +106,10 @@ BmpResult ReadWindowsBitmapCoreHeader(Bmp *pBmp) {
 
 	// We only care for the size and bpp at the moment
 	UINT read;
+	result = f_read(pBmp->fileHandle, &pBmp->width, sizeof(DWORD), &read);
+		if (result != FR_OK) {
+			return BmpResultFailure;
+		}
 	if (result != FR_OK) {
 		return BmpResultFailure;
 	}
