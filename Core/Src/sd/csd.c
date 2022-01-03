@@ -129,7 +129,7 @@ UInt32 SdCsdGetMaxTransferRate(PCCsdRegister pCSD) {
 
     BYTE timeValue = (BYTE)((tranSpeed & TRAN_SPEED_TIME_MASK) >> TRAN_SPEED_TIME_POS);
     DebugAssert(timeValue > 0 && timeValue < 16); // Just asserting we are doing things right. 0 is reserved
-    return s_tranSpeedValues[timeValue] * baseFreq;
+    return (UInt32)(s_tranSpeedValues[timeValue] * (float)baseFreq);
 }
 
 UInt16 SdCsdGetMaxReadDataBlockLength(PCCsdRegister pCSD) {

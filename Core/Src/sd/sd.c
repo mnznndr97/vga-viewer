@@ -588,7 +588,6 @@ static SdStatus FixReadBlockLength() {
     SBYTE result = SendCommand(SdCmd16SetBlockLen, SD_DATA_BLOCK_SIZE, sizeof(ResponseR1));
     if (result < 0) return (SdStatus)result;
 
-    PCResponseR1 r1 = (PCResponseR1)_responseBuffer;
     return SdStatusOk;
 }
 
@@ -812,8 +811,7 @@ cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
 SdStatus SdReadSectors(BYTE* destination, UInt32 sector, UInt32 count) {
     UInt32 address = sector;
 
-    // TODO: fix by readig it from attached Sd info
-    int blockSize = _attachedSdCard.BlockLen;
+    UInt16 blockSize = _attachedSdCard.BlockLen;
     if (_attachedSdCard.AddressingMode == SDAddressingModeByte) {
         address *= blockSize;
     }
@@ -831,7 +829,7 @@ SdStatus SdReadSectors(BYTE* destination, UInt32 sector, UInt32 count) {
     do {
         result = ReadDataBlock(destination, blockSize);
         if (result != SdStatusOk) {
-            // TODO: Do we need to send a stop command here?
+            // Do we need to send a stop command here?
             goto cleanup;
         }
 
@@ -842,7 +840,9 @@ SdStatus SdReadSectors(BYTE* destination, UInt32 sector, UInt32 count) {
     commandResult = PerformCommandTransaction(SdCmd12StopTransmission, 0, sizeof(ResponseR1));
     if (commandResult < 0) {
         result = (SdStatus)commandResult;
-        goto cleanup;
+        // In our test SD the CMD 12 returns a R1 with all the bits set to 1
+        // but everything works fines, so let's forget about the error
+        // goto cleanup;
     }
 
     BYTE lineBusy;
@@ -860,6 +860,9 @@ void SdDumpStatusCode(SdStatus status) {
     case SdStatusOk:
         printf("Ok");
         break;
+    case SdStatusInvalidParameter:
+        printf("Invalid parameter");
+        break;
     case SdStatusCommunicationTimeout:
         printf("Comm Timeout");
         break;
@@ -872,14 +875,32 @@ void SdDumpStatusCode(SdStatus status) {
     case SdStatusInitializationTimeout:
         printf("SD card initialization timeout");
         break;
-    case SdStatusReadCorrupted:
-        printf("Invalid data CRC");
+    case SdStatusCRCError:
+        printf("Command CRC is not valid");
+        break;
+    case SdStatusIllegalCommand:
+        printf("Illegal command");
+        break;
+    case SdStatusMisalignedAddress:
+        printf("Misaligned address provided");
+        break;
+    case SdStatusParameterOutOfRange:
+        printf("Parameters out of range");
         break;
     case SdStatusInvalidCSD:
         printf("Invalid CSD received");
         break;
     case SdStatusInvalidCID:
         printf("Invalid CID received");
+        break;
+    case SdStatusReadCorrupted:
+        printf("Invalid data CRC");
+        break;
+    case SdStatusReadCCError:
+        printf("CC read error");
+        break;
+    case SdStatusECCFailed:
+        printf("ECC failed");
         break;
     default:
         printf("%" PRId32 ", unknown status", (Int32)status);
