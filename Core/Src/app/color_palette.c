@@ -40,7 +40,7 @@ static void DrawPalette() {
 void AppPaletteInitialize(ScreenBuffer *screenBuffer) {
 	_activeBuffer = screenBuffer;
 
-	if (screenBuffer->bitsPerPixel == Bpp3) {
+	if (screenBuffer->bitsPerPixel == Bpp8) {
 		_redLevels = 4;
 	} else {
 		_redLevels = 256;

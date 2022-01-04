@@ -880,16 +880,16 @@ void HandleUserInput() {
 			Pen currentPen = { 0 };
 
 			/*currentPen.color.components.R = 0xFF;
-			 ScreenDrawRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
+			 ScreenFillRectangle(_screenBuffer, (PointS ) { 125, 75 }, (SizeS ) { 150, 150 }, &currentPen);
 
 			 currentPen.color.argb = 0x00FFFFFF;
 			 ScreenDrawString(_screenBuffer, "Ciao!", (PointS ) { 125, 75 }, &currentPen);*/
 
 			currentPen.color.argb = 0xff000000;
-			ScreenDrawRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
+			ScreenFillRectangle(_screenBuffer, (PointS ) { 0, 0 }, (SizeS ) { 400, 300 }, &currentPen);
 
 			currentPen.color.argb = 0xff008080;
-			//ScreenDrawRectangle(_screenBuffer, (PointS ) { 55, 128 }, (SizeS ) { 300, 22 }, &currentPen);
+			//ScreenFillRectangle(_screenBuffer, (PointS ) { 55, 128 }, (SizeS ) { 300, 22 }, &currentPen);
 
 			currentPen.color.argb = 0xffffc945;
 			ScreenDrawString(_screenBuffer, "?pjg_\\56%", (PointS ) { 55, 130 }, &currentPen);
@@ -1024,7 +1024,7 @@ void ConnecToVGATask(void *argument) {
 		EdidDumpStructure(&_vgaEDID);
 
 		_visualizationInfos.FrameSignals = VideoFrame800x600at60Hz;
-		_visualizationInfos.BitsPerPixel = Bpp3;
+		_visualizationInfos.BitsPerPixel = Bpp8;
 		_visualizationInfos.DoubleBuffered = false;
 		_visualizationInfos.Scaling = 2;
 
@@ -1047,8 +1047,12 @@ void ConnecToVGATask(void *argument) {
 			Error_Handler();
 		}
 
-		/*Pen currentPen = { };
-		 for (size_t line = 0; line < 300; line++) {
+		Pen currentPen = { };
+		currentPen.color.argb = 0xFFdeadbe;
+		ScreenFillRectangle(_screenBuffer, (PointS){21,21}, (SizeS) {358, 258}, &currentPen);
+
+
+		 /*for (size_t line = 0; line < 300; line++) {
 		 for (size_t pixel = 0; pixel < 400; pixel++) {
 		 currentPen.color.components.R = (pixel % 4) * 64;
 		 // currentPen.color.components.R = 0x3;

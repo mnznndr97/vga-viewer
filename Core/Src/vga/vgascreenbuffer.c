@@ -94,7 +94,7 @@ struct _VGAScreenBuffer {
 
 	/// @brief State of the buffer depending on the selected color mode
 	union {
-		Bpp3State Bpp3;
+		Bpp3State Bpp8;
 	} bufferState;
 
 	VideoFrameInfo VideoFrameTiming;
@@ -151,7 +151,7 @@ void TIM1_CC_IRQHandler(void) {
 		return;
 	}
 
-	if (screenBuffer->base.bitsPerPixel == Bpp3) {
+	if (screenBuffer->base.bitsPerPixel == Bpp8) {
 		HandleHSyncInterruptFor3bpp(screenBuffer, isLineStartIRQ);
 	}
 }
@@ -185,7 +185,7 @@ void TIM3_IRQHandler() {
 }
 
 void HandleHSyncInterruptFor3bpp(VGAScreenBuffer *screenBuffer, UInt32 isLineStart) {
-	Bpp3State *bpp3State = &screenBuffer->bufferState.Bpp3;
+	Bpp3State *bpp3State = &screenBuffer->bufferState.Bpp8;
 	if (screenBuffer->vSyncing) {
 		//DebugWriteChar('V');
 
@@ -246,7 +246,7 @@ void HandleDMALineEndFor3Bpp(VGAScreenBuffer *screenBuffer) {
 	// bus matrix contention
 	// So there is only one thing for it: even if there are more data to be transferred, we stop the DMA and (if necessary) force the output to low
 	// so that the black calibration of the monitor can still do its work
-	Bpp3State *bpp3State = &screenBuffer->bufferState.Bpp3;
+	Bpp3State *bpp3State = &screenBuffer->bufferState.Bpp8;
 	DMA_Stream_TypeDef *dmaStream = bpp3State->screenLineDMAStream;
 	DisableLineDMA(dmaStream);
 
@@ -326,8 +326,8 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 	screenBufferInfos.screenSize.height = finalTimings->FrameTiming.VisibleArea;
 
 	size_t framebufferSize;
-	if (localBpp == Bpp3) {
-		Bpp3State *bpp3State = &vgaScreenBuffer->bufferState.Bpp3;
+	if (localBpp == Bpp8) {
+		Bpp3State *bpp3State = &vgaScreenBuffer->bufferState.Bpp8;
 
 		// We calculate the border pixels to have an word-aligned vali
 		BYTE borderPixels = (BYTE) ((4 - (screenBufferInfos.screenSize.width & 0x3)) & 0x3);
@@ -337,12 +337,12 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 		DebugAssert((bpp3State->linePixels & 0x3) == 0); // make sure we have done everything right
 
 		// 3bpp supports optimized 32bit pixel writes
-		screenBufferInfos.packSize = 4;
+		screenBufferInfos.packSizePower = 2;
 	} else {
-		// localBpp == Bpp8
+		// localBpp == Bpp24
 		// If we have one byte per pixels, let's reflect it on the buffer
 		//framebufferSize *= 3;
-		screenBufferInfos.packSize = 1;
+		screenBufferInfos.packSizePower = 0;
 	}
 	screenBufferInfos.DrawCallback = &DrawPixel;
 	screenBufferInfos.DrawPackCallback = &DrawPixelPack;
@@ -375,8 +375,8 @@ VGAError AllocateFrameBuffer(const VGAVisualizationInfo *info, VGAScreenBuffer *
 
 	// Let's initialize the border pixels -> these will remain untouched for the rest of the application lifetime
 	for (size_t line = 0; line < screenBufferInfos.screenSize.height; line++) {
-		if (localBpp == Bpp3) {
-			UInt16 totalLinePixels = vgaScreenBuffer->bufferState.Bpp3.linePixels;
+		if (localBpp == Bpp8) {
+			UInt16 totalLinePixels = vgaScreenBuffer->bufferState.Bpp8.linePixels;
 			for (size_t pixel = screenBufferInfos.screenSize.width; pixel < totalLinePixels; pixel++) {
 				// RGB write in 1 single byte
 				buffer[line * totalLinePixels + pixel] = 0x00;
@@ -453,8 +453,8 @@ void DrawPixel(PointS pixel, const Pen *pen) {
     DebugAssert(pen != NULL);
 #endif // DRAWPIXELASSERT
 
-	if (buffer->base.bitsPerPixel == Bpp3) {
-		BYTE *vgaBufferPtr = &buffer->BufferPtr[pixel.y * buffer->bufferState.Bpp3.linePixels + pixel.x];
+	if (buffer->base.bitsPerPixel == Bpp8) {
+		BYTE *vgaBufferPtr = &buffer->BufferPtr[pixel.y * buffer->bufferState.Bpp8.linePixels + pixel.x];
 		Draw3bppPixelImpl(vgaBufferPtr, pen->color);
 	}
 }
@@ -470,7 +470,7 @@ void DrawPixelPack(PointS pixel, const Pen *pen) {
 
 	// We need to calculate the pack address. In our case, the pack address must be 32 bit aligned since we are using a 32bit
 	// memory access. The processor will throw an exception if the access is not aligned.
-	BYTE *pixelPtr = &buffer->BufferPtr[pixel.y * buffer->bufferState.Bpp3.linePixels + pixel.x];
+	BYTE *pixelPtr = &buffer->BufferPtr[pixel.y * buffer->bufferState.Bpp8.linePixels + pixel.x];
 	DebugAssert(((UInt32) pixelPtr & 0x03) == 0x0);
 
 	ARGB8Color color = pen->color;
@@ -663,7 +663,7 @@ VGAError SetupTimers(BYTE resScaling, VGAScreenBuffer *screenBuffer) {
 }
 
 void ShutdownDMAFor3BppBuffer(VGAScreenBuffer *screenBuffer) {
-	Bpp3State *bpp3BufState = &screenBuffer->bufferState.Bpp3;
+	Bpp3State *bpp3BufState = &screenBuffer->bufferState.Bpp8;
 	// 1) We disable the line DMA
 	DisableLineDMA(bpp3BufState->screenLineDMAStream);
 
@@ -721,8 +721,8 @@ VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, Sc
 	vgaScreenBuffer->hSyncClockTimer = visualizationInfo->hSyncTimer;
 	vgaScreenBuffer->vSyncClockTimer = visualizationInfo->vSyncTimer;
 
-	vgaScreenBuffer->bufferState.Bpp3.screenLineDMAController = DMA2;
-	vgaScreenBuffer->bufferState.Bpp3.screenLineDMAStream = visualizationInfo->lineDMA->Instance;
+	vgaScreenBuffer->bufferState.Bpp8.screenLineDMAController = DMA2;
+	vgaScreenBuffer->bufferState.Bpp8.screenLineDMAStream = visualizationInfo->lineDMA->Instance;
 	// TODO Calculate this based on stream number
 	vgaScreenBuffer->dmaClearFlags = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0;
 
@@ -734,14 +734,14 @@ VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, Sc
 		return result;
 	}
 
-	if (visualizationInfo->BitsPerPixel == Bpp3) {
+	if (visualizationInfo->BitsPerPixel == Bpp8) {
 		// When using the 3 bpp visualization, we use the low 8 GPIOE pins to output our colors
 		// (3 bits for blue, 3 bits for green, 2 bits for red, in "little endian" order (Red -> [0, 1], Green -> [2, 4], Blu -> [5-7])
 
-		DMA_Stream_TypeDef *dmaStream = vgaScreenBuffer->bufferState.Bpp3.screenLineDMAStream;
+		DMA_Stream_TypeDef *dmaStream = vgaScreenBuffer->bufferState.Bpp8.screenLineDMAStream;
 		dmaStream->PAR = (uint32_t) &GPIOE->ODR;
 		dmaStream->M0AR = (uint32_t) vgaScreenBuffer->BufferPtr;
-		dmaStream->NDTR = (uint32_t) vgaScreenBuffer->bufferState.Bpp3.linePixels;
+		dmaStream->NDTR = (uint32_t) vgaScreenBuffer->bufferState.Bpp8.linePixels;
 
 	}
 	_activeScreenBuffer = vgaScreenBuffer;
@@ -862,7 +862,7 @@ VGAError VGAStartOutput() {
 			int color = pixel / divisions;
 			int colorR = pixel / redDiv;
 
-			screenBuf->BufferPtr[line * screenBuf->bufferState.Bpp3.linePixels + pixel] = (color << 2) | (colorR);
+			screenBuf->BufferPtr[line * screenBuf->bufferState.Bpp8.linePixels + pixel] = (color << 2) | (colorR);
 		}
 	}
 
@@ -932,7 +932,7 @@ VGAError VGAStartOutput() {
 	 }
 	 }*/
 
-	Bpp3State *bpp3State = &screenBuf->bufferState.Bpp3;
+	Bpp3State *bpp3State = &screenBuf->bufferState.Bpp8;
 	// Before starting we clear all the flags in case a previous transfer was completed/cancelled
 	SET_BIT(bpp3State->screenLineDMAController->LIFCR, screenBuf->dmaClearFlags);
 	SET_BIT(bpp3State->screenLineDMAStream->CR, DMA_SxCR_EN);
@@ -996,7 +996,7 @@ VGAError VGAStopOutput() {
 	// we first have to disable the DMA, wait for its EN bit to become 0 and then disable the peripheral
 	screenBuf->outputState = VGAOutputStopped;
 
-	if (screenBuf->base.bitsPerPixel == Bpp3) {
+	if (screenBuf->base.bitsPerPixel == Bpp8) {
 		ShutdownDMAFor3BppBuffer(screenBuf);
 	}
 

@@ -134,9 +134,9 @@ void DisplayFResultError(const ScreenBuffer *screenBuffer, FRESULT result, const
 	UInt16 errXPos = (screenBuffer->screenSize.width / 2) - ((errorStrSize.width) / 2);
 
 	pen.color.argb = 0xFFFF0000;
-	ScreenDrawRectangle(screenBuffer, (PointS ) { descXPos, vStartingPoint }, descrStrSize, &pen);
+	ScreenFillRectangle(screenBuffer, (PointS ) { descXPos, vStartingPoint }, descrStrSize, &pen);
 	vStartingPoint += (descrStrSize.height);
-	ScreenDrawRectangle(screenBuffer, (PointS ) { errXPos, vStartingPoint }, errorStrSize, &pen);
+	ScreenFillRectangle(screenBuffer, (PointS ) { errXPos, vStartingPoint }, errorStrSize, &pen);
 
 	pen.color.argb = 0xFFFFFFFF;
 
@@ -164,7 +164,7 @@ void DisplayStartupMessage(const ScreenBuffer *screenBuffer) {
 	UInt16 xPos = (screenBuffer->screenSize.width / 2) - (msgSize.width / 2);
 
 	pen.color.argb = 0xFF28B5F4;
-	ScreenDrawRectangle(screenBuffer, (PointS ) { xPos, vStartingPoint }, msgSize, &pen);
+	ScreenFillRectangle(screenBuffer, (PointS ) { xPos, vStartingPoint }, msgSize, &pen);
 
 	pen.color.argb = 0xFFFFFFFF;
 	vStartingPoint += 2;
@@ -268,7 +268,7 @@ void DrawFileList() {
 			SizeS stringRectSize;
 			ScreenMeasureString(_fileInfoHandle.fname, &stringRectSize);
 
-			ScreenDrawRectangle(_screenBuffer, rowPoint, stringRectSize, &pen);
+			ScreenFillRectangle(_screenBuffer, rowPoint, stringRectSize, &pen);
 			pen.color.argb = SCREEN_RGB(0xFF, 0xFF, 0xFF);
 
 			ScreenDrawString(_screenBuffer, _fileInfoHandle.fname, nameDrawPoint, &pen);
