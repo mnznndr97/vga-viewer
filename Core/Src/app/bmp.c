@@ -1,10 +1,3 @@
-/*
- * bmp.c
- *
- *  Created on: 30 dic 2021
- *      Author: mnznn
- */
-
 #include <app/bmp.h>
 #include <assertion.h>
 
@@ -15,179 +8,240 @@
 /// As stated in wingdi.h, this structure is 2-byte padded
 /// NB: don't know how to differentiate between DIB that have the INFO or CORINFO header
 typedef struct tagBITMAPFILEHEADER {
-	WORD bfType;
-	DWORD bfSize;
-	WORD bfReserved1;
-	WORD bfReserved2;
-	DWORD bfOffBits;
-} __attribute__((aligned(2), packed)) BITMAPFILEHEADER, *PBITMAPFILEHEADER;
+    WORD bfType;
+    DWORD bfSize;
+    WORD bfReserved1;
+    WORD bfReserved2;
+    DWORD bfOffBits;
+} __attribute__((aligned(2), packed)) BITMAPFILEHEADER, * PBITMAPFILEHEADER;
+
+typedef struct tagBITMAPINFOHEADER {
+    DWORD biSize;
+    LONG  biWidth;
+    LONG  biHeight;
+    WORD  biPlanes;
+    WORD  biBitCount;
+    DWORD biCompression;
+    DWORD biSizeImage;
+    LONG  biXPelsPerMeter;
+    LONG  biYPelsPerMeter;
+    DWORD biClrUsed;
+    DWORD biClrImportant;
+} BITMAPINFOHEADER, * PBITMAPINFOHEADER;
 
 #define DIB_OFFSET 14
+#define BI_RGB 0L
 
-BmpResult FastDisplayBitmap(const Bmp *cpBmp, const ScreenBuffer *cpScreenBuffer) {
-	// We seek to the data section of the BMP
-	FRESULT result = f_lseek(cpBmp->fileHandle, cpBmp->dataOffset);
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
+/// Validates the bitmap identifier in the Bmp description
+static BmpResult ValidateIdentifier(const Bmp* pBmp);
 
-	/// Row is padded withb zero to be a multiple of DWORD
-	UInt32 rowByteSize = ((cpBmp->bitCount * cpBmp->width) + 31) / 32; // DWord size
-	rowByteSize *= 4;
+/// Reads the image data offset from the BMP file in the Bmp description
+/// @return Status of the operation
+static BmpResult ReadBufferOffset(Bmp* pBmp);
 
-	Pen pen = { 0 };
-	pen.color.components.A = 0xFF;
+BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer) {
+    // We seek to the data section of the BMP
+    FRESULT result = f_lseek(cpBmp->fileHandle, cpBmp->dataOffset);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
 
-	PointS point;
+    /// Row is padded with zero to be a multiple of DWORD
+    UInt32 rowByteSize = ((cpBmp->bitCount * cpBmp->width) + 31) / 32; // DWord size
+    rowByteSize *= 4;
 
-	// From our beloved MSDN https://docs.microsoft.com/en-us/windows/win32/gdi/about-bitmaps
-	// The bitmap scanline are stored in reverse order
-	UInt32 currentRowPos = f_tell(cpBmp->fileHandle);
-	for (UInt16 row = cpScreenBuffer->screenSize.height - 1;; row--) {
-		point.y = row;
+    Pen pen = { 0 };
+    pen.color.components.A = 0xFF;
 
-		// We seek to the current row pointer
-		result = f_lseek(cpBmp->fileHandle, currentRowPos);
-		if (result != FR_OK) {
-			return BmpResultFailure;
-		}
+    PointS point;
 
-		// Loop for each pixel
-		for (UInt16 col = 0; col < cpScreenBuffer->screenSize.width; col++) {
-			UInt32 argb = 0;
-			BYTE *ptr = ((BYTE*) &argb) + 1;
-			UINT read;
+    // From our beloved MSDN https://docs.microsoft.com/en-us/windows/win32/gdi/about-bitmaps
+    // The bitmap scanline are stored in reverse order
+    UInt32 currentRowPos = f_tell(cpBmp->fileHandle);
+    for (int row = cpScreenBuffer->screenSize.height - 1; row >= 0; row--) {
+        point.y = (Int16)row;
 
-			result = f_read(cpBmp->fileHandle, &pen.color.components.B, 1, &read);
-			result = f_read(cpBmp->fileHandle, &pen.color.components.G, 1, &read);
-			result = f_read(cpBmp->fileHandle, &pen.color.components.R, 1, &read);
+        // We seek to the current row pointer
+        result = f_lseek(cpBmp->fileHandle, currentRowPos);
+        if (result != FR_OK) {
+            return BmpResultFailure;
+        }
 
-			point.x = col;
-			ScreenDrawPixel(cpScreenBuffer, point, &pen);
-		}
+        // Loop for each pixel
+        for (int col = 0; col < cpScreenBuffer->screenSize.width; col++) {
+            UINT read;
 
-		currentRowPos += rowByteSize;
-		if (row == 0) {
-			break;
-		}
-	}
-	return BmpResultOk;
+            // We directly read the 3 components (that are stored in "little-endian")
+            // directly into the pen color
+            // Alpha component should remain untouched since we are reading only
+            //  3 bytes
+
+            result = f_read(cpBmp->fileHandle, &pen.color.argb, 3, &read);
+            if (result != FR_OK) {
+                return BmpResultFailure;
+            }
+            point.x = (Int16)col;
+            ScreenDrawPixel(cpScreenBuffer, point, &pen);
+        }
+
+        currentRowPos += rowByteSize;
+    }
+    return BmpResultOk;
 }
 
-BmpResult ReadBufferOffset(Bmp *pBmp) {
-	FRESULT result = f_lseek(pBmp->fileHandle, offsetof(BITMAPFILEHEADER, bfOffBits));
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
+BmpResult ReadBufferOffset(Bmp* pBmp) {
+    // First we seek to the correct file point
+    FRESULT result = f_lseek(pBmp->fileHandle, offsetof(BITMAPFILEHEADER, bfOffBits));
+    if (result != FR_OK) {
+        // Cannot seek. Some I/O problem?
+        return BmpResultFailure;
+    }
 
-	// We only care for the size and bpp at the moment
-	UINT read;
-	result = f_read(pBmp->fileHandle, &pBmp->dataOffset, sizeof(DWORD), &read);
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
-	return BmpResultOk;
+    // We simply read the data offset field (already stored in little-endian)
+    UINT read;
+    result = f_read(pBmp->fileHandle, &pBmp->dataOffset, sizeof(DWORD), &read);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+    DebugAssert(read == sizeof(DWORD));
+    return BmpResultOk;
 }
 
-BmpResult ReadWindowsBitmapCoreHeader(Bmp *pBmp) {
-	// Wikipedia link: https://en.wikipedia.org/wiki/BMP_file_format (not updated)
-	// Main document: https://docs.microsoft.com/en-us/windows/win32/gdi/bitmap-storage
-	// A bitmap file is composed of a BITMAPFILEHEADER structure followed by a BITMAPINFOHEADER
+BmpResult ReadWindowsBitmapInfoHeader(Bmp* pBmp) {
+    // Wikipedia link: https://en.wikipedia.org/wiki/BMP_file_format (not updated)
+    // Main document: https://docs.microsoft.com/en-us/windows/win32/gdi/bitmap-storage
+    // A bitmap file is composed of a BITMAPFILEHEADER structure followed by a BITMAPINFOHEADER
 
-	// NB: Wikipedia is referring to the old BITMAPCOREHEADER structure in the DIB description
-	// but, as stated in https://docs.microsoft.com/en-us/windows/win32/gdi/bitmap-header-types,
-	// the type has been deprecated
-	// So let's focus on current windows implementation
+    // NB: Wikipedia is referring to the old BITMAPCOREHEADER structure in the DIB description
+    // but, as stated in https://docs.microsoft.com/en-us/windows/win32/gdi/bitmap-header-types,
+    // the type has been deprecated
+    // So let's focus on current windows implementation
 
-	FRESULT result = f_lseek(pBmp->fileHandle, DIB_OFFSET + sizeof(DWORD));
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
+    FRESULT result = f_lseek(pBmp->fileHandle, DIB_OFFSET + offsetof(BITMAPINFOHEADER, biWidth));
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
 
-	// We only care for the size and bpp at the moment
-	UINT read;
-	result = f_read(pBmp->fileHandle, &pBmp->width, sizeof(DWORD), &read);
-		if (result != FR_OK) {
-			return BmpResultFailure;
-		}
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
-	result = f_read(pBmp->fileHandle, &pBmp->height, sizeof(DWORD), &read);
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
+    // We only care for the size and bpp at the moment
+    UINT read;
+    result = f_read(pBmp->fileHandle, &pBmp->width, sizeof(DWORD), &read);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+    result = f_read(pBmp->fileHandle, &pBmp->height, sizeof(DWORD), &read);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
 
-	result = f_lseek(pBmp->fileHandle, f_tell(pBmp->fileHandle) + sizeof(WORD));
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
+    // We read the bit count
+    result = f_lseek(pBmp->fileHandle, DIB_OFFSET + offsetof(BITMAPINFOHEADER, biBitCount));
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+    result = f_read(pBmp->fileHandle, &pBmp->bitCount, sizeof(WORD), &read);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
 
-	result = f_read(pBmp->fileHandle, &pBmp->bitCount, sizeof(WORD), &read);
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
+    // Let's check image is not compressed
+    DWORD compression;
+    result = f_read(pBmp->fileHandle, &compression, sizeof(compression), &read);
+    if (result != FR_OK || compression != BI_RGB) {
+        return BmpResultFailure;
+    }
 
-	return BmpResultOk;
+    DWORD clrUsed;
+    result = f_lseek(pBmp->fileHandle, DIB_OFFSET + offsetof(BITMAPINFOHEADER, biClrUsed));
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+    result = f_read(pBmp->fileHandle, &clrUsed, sizeof(clrUsed), &read);
+    if (result != FR_OK || clrUsed != 0) {
+        return BmpResultFailure;
+    }
+
+    return BmpResultOk;
 }
 
-BmpResult ValidateIdentifier(const Bmp *pBmp) {
-	if (pBmp->identifier != BmpIdentifierBM)
-		return BmpResultFailure;
-	return BmpResultOk;
+BmpResult ValidateIdentifier(const Bmp* pBmp) {
+    if (pBmp->identifier != BmpIdentifierBM)
+        return BmpResultFailure;
+    return BmpResultOk;
 }
 
 /* Public section */
 
-BmpResult BmpReadFromFile(FIL *file, Bmp *pBmp) {
-	static_assert(sizeof(BmpIdentifier) == sizeof(WORD));
+BmpResult BmpReadFromFile(FIL* file, Bmp* pBmp) {
+    static_assert(sizeof(BmpIdentifier) == sizeof(WORD));
 
-	if (file == NULL)
-		return BmpResultFailure;
-	if (pBmp == NULL)
-		return BmpResultFailure;
+    if (file == NULL)
+        return BmpResultFailure;
+    if (pBmp == NULL)
+        return BmpResultFailure;
 
-	UINT read;
-	FRESULT result = f_read(file, &pBmp->identifier, sizeof(BmpIdentifier), &read);
-	if (result != FR_OK) {
-		return BmpResultFailure;
-	}
-	DebugAssert(read == sizeof(BmpIdentifier));
+    // First thing to do: read and validate the bitmap identifier
+    // We support only the Windows header, which is BM
+    UINT read;
+    FRESULT result = f_read(file, &pBmp->identifier, sizeof(BmpIdentifier), &read);
+    if (result != FR_OK) {
+        // Cannot read from the file. We cannot exit
+        return BmpResultFailure;
+    }
+    DebugAssert(read == sizeof(BmpIdentifier));
+    // Let' s validate the header
+    BmpResult bmpResult;
+    if ((bmpResult = ValidateIdentifier(pBmp)) != BmpResultOk) {
+        return bmpResult;
+    }
 
-	BmpResult bmpResult;
-	if ((bmpResult = ValidateIdentifier(pBmp)) != BmpResultOk) {
-		return bmpResult;
-	}
+    // Here header is valid. Let's Immediately register the file handle in the destination struct
+    // Maybe it's not the best for security, etc but now the focus is not on this
+    pBmp->fileHandle = file;
 
-	pBmp->fileHandle = file;
-	if ((bmpResult = ReadBufferOffset(pBmp)) != BmpResultOk) {
-		return bmpResult;
-	}
-	if (pBmp->identifier == BmpIdentifierBM) {
-		ReadWindowsBitmapCoreHeader(pBmp);
-	}
+    // After the identifier, we have to read the image data offset, which is still a field of the header
+    // (the main header is shared by all the strange BMP implementation)
+    if ((bmpResult = ReadBufferOffset(pBmp)) != BmpResultOk) {
+        return bmpResult;
+    }
 
-	if (pBmp->bitCount != 24) {
-		// Not supported
-		return BmpResultFailure;
-	}
+    // We read the header information that we need 
+    if (pBmp->identifier == BmpIdentifierBM) {
+        if ((bmpResult = ReadWindowsBitmapInfoHeader(pBmp)) != BmpResultOk) {
+            // Some problem while reading 
+            return bmpResult;
+        }
+    }
+    else
+    {
+        // Should never get here
+    }
 
-	return BmpResultOk;
+    if (pBmp->bitCount != 24) {
+        // Not supported
+        return BmpResultFailure;
+    }
+
+    return BmpResultOk;
 }
 
-BmpResult BmpDisplay(const Bmp *cpBmp, const ScreenBuffer *cpScreenBuffer) {
-	static_assert(sizeof(BmpIdentifier) == sizeof(WORD));
+BmpResult BmpDisplay(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer) {
+    static_assert(sizeof(BmpIdentifier) == sizeof(WORD));
 
-	if (cpBmp == NULL)
-		return BmpResultFailure;
-	if (cpScreenBuffer == NULL)
-		return BmpResultFailure;
+    if (cpBmp == NULL)
+        return BmpResultFailure;
+    if (cpScreenBuffer == NULL)
+        return BmpResultFailure;
+    if (cpBmp->width == 0 || cpBmp->height == 0)
+        return BmpResultFailure;
 
-	// If the bitmap we want to display is of the same size as the screen , we don't have to apply any scaling and
-	// we can directly copy pixel by pixel
-	if (cpScreenBuffer->screenSize.width == cpBmp->width && cpScreenBuffer->screenSize.height == cpBmp->height) {
-		FastDisplayBitmap(cpBmp, cpScreenBuffer);
-	}
+    // If the bitmap we want to display is of the same size as the screen , we don't have to apply any scaling and
+    // we can directly copy pixel by pixel
+    if (cpScreenBuffer->screenSize.width == cpBmp->width && cpScreenBuffer->screenSize.height == cpBmp->height) {
+        FastDisplayBitmap(cpBmp, cpScreenBuffer);
+    }
 
-	return BmpResultOk;
+    return BmpResultOk;
 }
