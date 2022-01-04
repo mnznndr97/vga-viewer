@@ -88,7 +88,7 @@ typedef struct _Bpp3State {
     DMA_Stream_TypeDef* screenLineDMAStream;
 } Bpp3State;
 
-static struct _VgaScreenBuffer {
+struct _VgaScreenBuffer {
     ScreenBuffer base;
 
     BYTE* BufferPtr;
@@ -327,22 +327,26 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     ScreenBuffer screenBufferInfos = { 0 };
     screenBufferInfos.bitsPerPixel = localBpp;
     // We write as the screen width out visible line pixels
-    screenBufferInfos.screenSize.width = finalTimings->ScanlineTiming.VisibleArea;
+    screenBufferInfos.screenSize.width = (Int16)finalTimings->ScanlineTiming.VisibleArea;
     // We write as the screen height out visible frame lines
-    screenBufferInfos.screenSize.height = finalTimings->FrameTiming.VisibleArea;
+    screenBufferInfos.screenSize.height = (Int16)finalTimings->FrameTiming.VisibleArea;
 
-    size_t framebufferSize;
+    // Let' s check that here we are ok with our math
+    DebugAssert(screenBufferInfos.screenSize.width > 0);
+    DebugAssert(screenBufferInfos.screenSize.height > 0);
+
+    size_t framebufferSize = 0;
     if (localBpp == Bpp8) {
         Bpp3State* bpp3State = &vgaScreenBuffer->bufferState.Bpp8;
 
-        // We calculate the border pixels to have an word-aligned vali
+        // We calculate the border pixels to have an word-aligned buffer width
         BYTE borderPixels = (BYTE)((4 - (screenBufferInfos.screenSize.width & 0x3)) & 0x3);
 
-        bpp3State->linePixels = screenBufferInfos.screenSize.width + borderPixels;
+        bpp3State->linePixels = (UInt16)(screenBufferInfos.screenSize.width + borderPixels);
         framebufferSize = bpp3State->linePixels;
         DebugAssert((bpp3State->linePixels & 0x3) == 0); // make sure we have done everything right
 
-        // 3bpp supports optimized 32bit pixel writes
+        // 8bpp supports optimized 32bit pixel writes
         screenBufferInfos.packSizePower = 2;
     }
     else {
@@ -356,7 +360,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
 
     // framebufferSize here contains the number of bytes requires for a single line depending of the mode
     // We simply now multiply the lines and double everything if double buffered
-    framebufferSize *= screenBufferInfos.screenSize.height;
+    framebufferSize = (size_t)(framebufferSize * (size_t)screenBufferInfos.screenSize.height);
 
     // We store the new buffer size
     vgaScreenBuffer->bufferSize = framebufferSize;
@@ -369,7 +373,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     // We last step: we try to allocate
     BYTE* buffer = (BYTE*)ralloc(framebufferSize);
     if (buffer == NULL) {
-        // We clear the out parameter to enphatize that something has gone wrong
+        // We clear the out parameter to emphasize that something has gone wrong
         *vgaScreenBuffer = (const VgaScreenBuffer){ 0 };
         return VGAErrorOutOfMemory;
     }
@@ -379,10 +383,10 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     vgaScreenBuffer->base = screenBufferInfos;
 
     // Let's initialize the border pixels -> these will remain untouched for the rest of the application lifetime
-    for (size_t line = 0; line < screenBufferInfos.screenSize.height; line++) {
+    for (int line = 0; line < screenBufferInfos.screenSize.height; line++) {
         if (localBpp == Bpp8) {
             UInt16 totalLinePixels = vgaScreenBuffer->bufferState.Bpp8.linePixels;
-            for (size_t pixel = screenBufferInfos.screenSize.width; pixel < totalLinePixels; pixel++) {
+            for (int pixel = screenBufferInfos.screenSize.width; pixel < totalLinePixels; pixel++) {
                 // RGB write in 1 single byte
                 buffer[line * totalLinePixels + pixel] = 0x00;
             }
@@ -916,15 +920,15 @@ VgaError VGAStartOutput() {
         break;
     }
 
-    // Let's just wait the fifo is effectively filled
+    // Let's just wait the FIFO is effectively filled
     // NB: Didn't find anything in the documentation that states that this operation is necessary  but let's keep it anyway
-    // If there is some problem with the fifo we may end up being blocked in this infinite loop and track down the problem
+    // If there is some problem with the FIFO we may end up being blocked in this infinite loop and track down the problem
     while (READ_BIT(bpp3State->screenLineDMAStream->FCR, DMA_SxFCR_FS) != fifoStatusToReach) {
 
     }
     screenBuf->outputState = VGAOutputActive;
 
-    // END STEP: we start the main timer. Ther main timer direclty feeds the Hsync so we don't need any
+    // END STEP: we start the main timer. The main timer directly feeds the Hsync so we don't need any
     // output
     // We also set activate
     HAL_TIM_Base_Start(screenBuf->mainPixelClockTimer);

@@ -1,67 +1,82 @@
-/*
- * color_palette.c
- *
- *  Created on: Nov 29, 2021
- *      Author: mnznn
- */
-
 #include <app/color_palette.h>
 #include <stddef.h>
 
-static ScreenBuffer *_activeBuffer = NULL;
+/// Active screen buffer pointer
+static ScreenBuffer* _pActiveBuffer = NULL;
 
-static BYTE _redLevels = NULL;
-static BYTE _redLevel = NULL;
+/// Number of red levels available (4 or 256)
+static int _redLevels = 0;
+/// Active red level
+static int _redLevel = 0;
 
-static BYTE _redIncrement = NULL;
+/// Increment that needs to be applied to the red level.
+/// When screen buffer is in 8bpp, the red must be increment of 64 values
+/// for each level
+static int _redIncrement = 0;
 
 static void DrawPalette() {
-	Pen currentPen = { };
-	ScreenBuffer *screenBuffer = _activeBuffer;
+    Pen currentPen = { 0 };
+    ScreenBuffer* screenBuffer = _pActiveBuffer;
 
-	currentPen.color.components.A = 0xFF;
-	currentPen.color.components.R = _redLevel * _redIncrement;
+    // Alpha and red are fixed
+    currentPen.color.components.A = 0xFF;
+    currentPen.color.components.R = (BYTE)(_redLevel * _redIncrement);
 
-	// Simple loop to draw all the blue levels by line and all green levels by row
-	float bluDivisions = screenBuffer->screenSize.height / 256.0f;
-	float greenDivisions = screenBuffer->screenSize.width / 256.0f;
-	for (size_t line = 0; line < screenBuffer->screenSize.height; line++) {
-		currentPen.color.components.B = (BYTE) (line / bluDivisions);
+    // Simple loop to draw all the blue levels by line and all green levels by row
+    float bluDivisions = screenBuffer->screenSize.height / 256.0f;
+    float greenDivisions = screenBuffer->screenSize.width / 256.0f;
 
-		for (size_t pixel = 0; pixel < screenBuffer->screenSize.width; pixel++) {
-			currentPen.color.components.G = (BYTE) (pixel / greenDivisions);
-			ScreenDrawPixel(screenBuffer, (PointS ) { pixel, line }, &currentPen);
-		}
-	}
+    PointS pixelPoint = { 0 };
+    for (int line = 0; line < screenBuffer->screenSize.height; line++) {
+        // Blue and Y are fixed for the whole line
+        // Blue level [0; 255] in the col is simply defined by the line
+        pixelPoint.y = (Int16)line;
+        currentPen.color.components.B = (BYTE)((float)line / bluDivisions);
+
+        for (int col = 0; col < screenBuffer->screenSize.width; col++) {
+            pixelPoint.x = (Int16)col;
+            currentPen.color.components.G = (BYTE)((float)col / greenDivisions);
+
+            ScreenDrawPixel(screenBuffer, pixelPoint, &currentPen);
+        }
+    }
 }
 
 // ##### Public Function definitions #####
 
-void AppPaletteInitialize(ScreenBuffer *screenBuffer) {
-	_activeBuffer = screenBuffer;
+void AppPaletteInitialize(ScreenBuffer* screenBuffer) {
+    // We register the frame buffer
+    _pActiveBuffer = screenBuffer;
 
-	if (screenBuffer->bitsPerPixel == Bpp8) {
-		_redLevels = 4;
-	} else {
-		_redLevels = 256;
-	}
-	_redIncrement = (BYTE) (256 / _redLevels);
-	_redLevel = 0;
+    // Let's calculate the red level and increment
+    if (screenBuffer->bitsPerPixel == Bpp8) {
+        _redLevels = 4;
+    }
+    else {
+        _redLevels = 256;
+    }
+    _redIncrement = 256 / _redLevels;
+    _redLevel = 0;
 
-	DrawPalette();
+    // Eventually we draw the initial palette
+    DrawPalette();
 }
 
 void AppPaletteProcessInput(char command) {
-	if (command == '+' && _redLevel < (_redLevels - 1)) {
-		++_redLevel;
-		DrawPalette();
-	} else if (command == '-' && _redLevel > 0) {
-		--_redLevel;
-		DrawPalette();
-	}
-
+    // Super simple here : 
+    // '+' char increments the red level and redraw the palette
+    // '-' char decrements the red level and redraw the palette
+    if (command == '+' && _redLevel < (_redLevels - 1)) {
+        ++_redLevel;
+        DrawPalette();
+    }
+    else if (command == '-' && _redLevel > 0) {
+        --_redLevel;
+        DrawPalette();
+    }
 }
 
 void AppPaletteClose() {
-	_activeBuffer = NULL;
+    // Nothing to do here; let's just remove the screen buffer reference
+    _pActiveBuffer = NULL;
 }
