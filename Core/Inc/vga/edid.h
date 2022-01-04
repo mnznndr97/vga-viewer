@@ -199,7 +199,7 @@ inline float EdidGetGamma(const Edid *edid) {
 BOOL EdidIsChecksumValid(const Edid *edid);
 /// Checks if the timing is supperted by the provided EDID
 /// @param edid EDID struct pointer
-/// @param timing Timing
+/// @param timing VgaTiming
 BOOL EdidIsTimingSupported(const Edid *edid, EDIDTiming timing);
 
 /// Checks if the Standard timing information is filled with data
@@ -209,7 +209,7 @@ inline BOOL EdidIsTimingInfoFilled(const EdidTimingInformation *edidTimingInfo) 
 	return bytePtr[0] != 0x01 && bytePtr[1] != 0x01;
 }
 
-/// Merges the bytes of a Detailed Timing Descriptor
+/// Merges the bytes of a Detailed VgaTiming Descriptor
 /// @param lsb LSB of the value
 /// @param msb LSB of the value
 Int32 EdidDtdMergeBits(BYTE lsb, BYTE msb);

@@ -270,7 +270,6 @@ void DrawFileList() {
 
 			ScreenFillRectangle(_screenBuffer, rowPoint, stringRectSize, &pen);
 			pen.color.argb = SCREEN_RGB(0xFF, 0xFF, 0xFF);
-
 			ScreenDrawString(_screenBuffer, _fileInfoHandle.fname, nameDrawPoint, &pen);
 			pen.color.argb = originalPenColor;
 		} else {

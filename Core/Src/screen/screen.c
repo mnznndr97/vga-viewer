@@ -14,6 +14,7 @@
 static ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
     // Simple level calculation. Our glyph bitmap levels range from 0 .. 64
     float glyphPixelLevel = (float)glyphLevel / 64.0f;
+    DebugAssert(glyphPixelLevel <= 1.0f);
 
     // To better display the glyph, I assumed that is better to directly work only on the alpha value
     // In our case, the font bitmaps are exported from Window$. Some of the pixels at the border of the glyph

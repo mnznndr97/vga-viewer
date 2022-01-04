@@ -1,8 +1,14 @@
 /*
- * vgascreenbuffer.h
+ * This file contains the headers for the management of the native VGA framebuffer
  *
- *  Created on: 1 nov 2021
- *      Author: mnznn
+ * The entry point is the function VgaCreateScreenBuffer that allocates, initialize a ScreenBuffer object and
+ * stores it internally later retrieve the neccasry data inside the interrupt handlers.
+ * The desired screen setup is specified via the VgaVisualizationInfo structure, passed as parameter to the function
+ *
+ * Frame timings are described by the VgaVideoFrameInfo structure
+ * 
+ *  Created on: Nov 1, 2021
+ *      Author: Andrea Monzani [Mat 952817]
  */
 
 #ifndef INC_VGA_VGASCREENBUFFER_H_
@@ -12,90 +18,71 @@
 #include <screen\screen.h>
 #include <stm32f4xx_hal.h>
 
-// ##### Internal forward declarations #####
-
-typedef struct _VGAScreenBuffer VGAScreenBuffer;
-
-// ##### Public struct and enums declarations #####
+ // ##### Public struct and enums declarations #####
 
 typedef enum _VGAError {
-	/**
-	 * @brief No error occurred
-	 */
-	VGAErrorNone = 0,
-	/**
-	 * @brief Memory space is too low
-	 */
-	VGAErrorOutOfMemory,
-	/**
-	 * @brief A parameter passed to a function is not valid
-	 */
-	VGAErrorInvalidParameter, VGAErrorInvalidState,
+    /// No error occurred
+    VgaErrorNone = 0,
+    /// Memory space is too low
+    VGAErrorOutOfMemory,
+    /// A parameter passed to a function is not valid
+    VgaErrorInvalidParameter,
+    VGAErrorInvalidState,
+    /// provided working mode is not supported
+    VgaErrorNotSupported,
+} VgaError;
 
-	VGAErrorNotSupported,
-} VGAError;
+/// Generic timing informations of a Scanline or a Frame, expressed in items count
+typedef struct _VgaTiming {
+    /// Number of visible items (pixels or lines) in the current timing
+    UInt16 VisibleArea;
+    UInt16 FrontPorch;
+    UInt16 SyncPulse;
+    UInt16 BackPorch;
+} VgaTiming, * PVgaTiming;
 
-/**
- * @brief Generic timing informations of a Scanline or a Frame, expressed in items count
- */
-typedef struct _Timing {
-	/// Number of visible items (pixels or lines) in the current timing
-	UInt16 VisibleArea;
-	UInt16 FrontPorch;
-	UInt16 SyncPulse;
-	UInt16 BackPorch;
-} Timing, *PTiming;
+/// Complete timing informations of a VGA frame
+typedef struct _VgaVideoFrameInfo {
+    /// Pixel frequency in MegaHerts
+    float PixelFrequencyMHz;
+    /// Horizontal line timing informations
+    VgaTiming ScanlineTiming;
+    /// Vertical frame timing informations
+    VgaTiming FrameTiming;
+} VgaVideoFrameInfo, * PVgaVideoFrameInfo;
 
-/**
- * @brief Complete timing informations of a VGA frame
- */
-typedef struct VideoFrameInfo {
-	/**
-	 * @brief Pixel frequency in MegaHerts
-	 */
-	float PixelFrequencyMHz;
-	/**
-	 * @brief Horizontal line timing informations
-	 */
-	Timing ScanlineTiming;
-	/**
-	 * @brief Vertical frame timing informations
-	 */
-	Timing FrameTiming;
-} VideoFrameInfo, *PVideoFrameInfo;
+typedef struct _VgaVisualizationInfo {
+    VgaVideoFrameInfo FrameSignals;
+    /// Scaling to be applied to the provided resolution
+    BYTE Scaling;
+    /// BitsPerPixels that must be used
+    Bpp BitsPerPixel;
 
-typedef struct _VGAVisualizationInfo {
-	VideoFrameInfo FrameSignals;
-	BYTE Scaling;
-	Bpp BitsPerPixel;
-	BOOL DoubleBuffered;
-
-	TIM_HandleTypeDef *mainTimer;
-	TIM_HandleTypeDef *hSyncTimer;
-	TIM_HandleTypeDef *vSyncTimer;
-	DMA_HandleTypeDef *lineDMA;
-} VGAVisualizationInfo;
+    TIM_HandleTypeDef* mainTimer;
+    TIM_HandleTypeDef* hSyncTimer;
+    TIM_HandleTypeDef* vSyncTimer;
+    DMA_HandleTypeDef* lineDMA;
+} VgaVisualizationInfo;
 
 // ##### Public fileds declarations #####
 
-extern VideoFrameInfo VideoFrame800x600at60Hz;
+extern VgaVideoFrameInfo VideoFrame800x600at60Hz;
 // ##### Public functions declarations #####
 
 /// Creates a new ScreenBuffer from VGA initialization parameters and registers it as a working buffer
 /// @param visualizationInfo VGA output parameters
 /// @param screenBuffer Filled ScreenBuffer struct with the relative data
 /// @return VGA operation status
-VGAError VGACreateScreenBuffer(const VGAVisualizationInfo *visualizationInfo, ScreenBuffer **screenBuffer);
+VgaError VgaCreateScreenBuffer(const VgaVisualizationInfo* visualizationInfo, ScreenBuffer** screenBuffer);
 /// Releases all the resources associated with the ScreenbBuffer instance
 /// @return VGA operation status
-VGAError VGAReleaseScreenBuffer(ScreenBuffer* screenBuffer);
-
+VgaError VGAReleaseScreenBuffer(ScreenBuffer* screenBuffer);
 /// Dumps the active buffer timers frequencies
-VGAError VGADumpTimersFrequencies();
+VgaError VGADumpTimersFrequencies();
 
-VGAError VGAStartOutput();
-VGAError VGASuspendOutput();
-VGAError VGAResumeOutput();
-VGAError VGAStopOutput();
+VgaError VGAStartOutput();
+VgaError VGASuspendOutput();
+VgaError VGAResumeOutput();
+VgaError VGAStopOutput();
 
 #endif /* INC_VGA_VGASCREENBUFFER_H_ */

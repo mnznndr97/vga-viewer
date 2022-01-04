@@ -101,7 +101,7 @@ const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = { .name = "_vgaEDIDRcvEvnt
 
 static Edid _vgaEDID = { 0 };
 static ScreenBuffer *_screenBuffer = NULL;
-static VGAVisualizationInfo _visualizationInfos = { 0 };
+static VgaVisualizationInfo _visualizationInfos = { 0 };
 
 static uint8_t _userCommand = 0;
 static volatile uint8_t _userCommandReceivedFlag = 0;
@@ -1025,7 +1025,6 @@ void ConnecToVGATask(void *argument) {
 
 		_visualizationInfos.FrameSignals = VideoFrame800x600at60Hz;
 		_visualizationInfos.BitsPerPixel = Bpp8;
-		_visualizationInfos.DoubleBuffered = false;
 		_visualizationInfos.Scaling = 2;
 
 		_visualizationInfos.mainTimer = &htim4;
@@ -1033,8 +1032,8 @@ void ConnecToVGATask(void *argument) {
 		_visualizationInfos.vSyncTimer = &htim3;
 		_visualizationInfos.lineDMA = &hdma_tim1_trig;
 
-		VGAError vgaResult = VGACreateScreenBuffer(&_visualizationInfos, &_screenBuffer);
-		if (vgaResult != VGAErrorNone) {
+		VgaError vgaResult = VgaCreateScreenBuffer(&_visualizationInfos, &_screenBuffer);
+		if (vgaResult != VgaErrorNone) {
 			Error_Handler();
 		}
 
@@ -1043,7 +1042,7 @@ void ConnecToVGATask(void *argument) {
 		CHECK_OS_STATUS(osThreadResume(_mainTaskHandle));
 
 		vgaResult = VGAStartOutput();
-		if (vgaResult != VGAErrorNone) {
+		if (vgaResult != VgaErrorNone) {
 			Error_Handler();
 		}
 
