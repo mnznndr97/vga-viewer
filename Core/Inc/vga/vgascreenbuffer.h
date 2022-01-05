@@ -76,13 +76,20 @@ extern VgaVideoFrameInfo VideoFrame800x600at60Hz;
 VgaError VgaCreateScreenBuffer(const VgaVisualizationInfo* visualizationInfo, ScreenBuffer** screenBuffer);
 /// Releases all the resources associated with the ScreenbBuffer instance
 /// @return VGA operation status
-VgaError VGAReleaseScreenBuffer(ScreenBuffer* screenBuffer);
+VgaError VgaReleaseScreenBuffer(ScreenBuffer* screenBuffer);
 /// Dumps the active buffer timers frequencies
-VgaError VGADumpTimersFrequencies();
-
-VgaError VGAStartOutput();
-VgaError VGASuspendOutput();
-VgaError VGAResumeOutput();
-VgaError VGAStopOutput();
+VgaError VgaDumpTimersFrequencies();
+/// Enable the display output of the VGA driver
+/// @return Status of the operation
+VgaError VgaStartOutput();
+/// Suspend visible area output. Sync signals remain active
+/// @return Status of the operation
+VgaError VgaSuspendOutput();
+/// Resume visible area output
+/// @return Status of the operation
+VgaError VgaResumeOutput();
+/// Completly disable VGA output (sync signals are no more generated)
+/// @return Status of the operation
+VgaError VgaStopOutput();
 
 #endif /* INC_VGA_VGASCREENBUFFER_H_ */

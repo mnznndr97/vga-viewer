@@ -1037,11 +1037,11 @@ void ConnecToVGATask(void *argument) {
 			Error_Handler();
 		}
 
-		VGADumpTimersFrequencies();
+		VgaDumpTimersFrequencies();
 		// We are connected. We resume the low priority check connection task and we suspend ourself
 		CHECK_OS_STATUS(osThreadResume(_mainTaskHandle));
 
-		vgaResult = VGAStartOutput();
+		vgaResult = VgaStartOutput();
 		if (vgaResult != VgaErrorNone) {
 			Error_Handler();
 		}
@@ -1094,8 +1094,8 @@ void MainTask(void *argument) {
 			// We abort the uart command reception (we are not interested in the outcome of this operation)
 			HAL_UART_AbortReceive_IT(&huart4);
 			// We completly stop the VGA output
-			VGAStopOutput();
-			VGAReleaseScreenBuffer(_screenBuffer);
+			VgaStopOutput();
+			VgaReleaseScreenBuffer(_screenBuffer);
 
 			// Eventually we resume the connection task and suspend ourself
 			CHECK_OS_STATUS(osThreadResume(vgaConnectionTaHandle));

@@ -51,66 +51,70 @@ static void DisableLineDMA(DMA_Stream_TypeDef* dmaStream);
 ///\brief Get the sum of all the pixels count in a VgaTiming instance
 ///\return -1 if pointer is invalid, pixel sum otherwhise
 UInt32 GetTimingSum(const VgaTiming* timing);
-static void HandleHSyncInterruptFor3bpp(VgaScreenBuffer* screenBuffer, UInt32 isLineStart);
-static void HandleDMALineEndFor3Bpp(VgaScreenBuffer* screenBuffer);
+static void HandleHSyncInterruptFor8bpp(VgaScreenBuffer* screenBuffer, UInt32 isLineStart);
+static void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer);
 static VgaError ValidateTiming(const VgaTiming* timing);
 static void ScaleTiming(const VgaTiming* timing, BYTE scale, VgaTiming* dest);
 static VgaError SetupMainClockTree(float pixelMHzFreq);
 static VgaError SetupTimers(BYTE resScaling, VgaScreenBuffer* screenBuffer);
 
-static void ShutdownDMAFor3BppBuffer(VgaScreenBuffer* screenBuffer);
+static void ShutdownDMAFor8BppBuffer(VgaScreenBuffer* screenBuffer);
 
 // ##### Private types declarations #####
 
 /// Compacts the 24 color bits into a single byte
 /// \remarks Red is only 2 bits (the r byte MSB), Green and Blue are 3 bits
 #define RGB_TO_8BPP(r,g,b) ((((r) >> 6) | (((g) >> 5) << 2) | (((b) >> 5) << 5)) & 0xFF)
-typedef enum _VGAOutputState {
+
+/// Definition for the output state of our VGA driver
+typedef enum _VgaOutputState {
     /// VGA is ready but is not outputting any signal
-    VGAOutputStopped,
+    VgaOutputStopped,
     /// VGA is ready and outputting timing signals but the DMA is not active and the
     /// output is forced to low for the entire frame
-    VGAOutputSuspended,
-    /// VGA is displaying the data in the active buffer
-    ///
-    /// \remarks This state should be maintained during the whole vertical visible area.
-    /// The horizontal blanking of the single line is addressed separately
-    VGAOutputActive
-} VGAOutputState;
+    VgaOutputSuspended,
+    /// VGA is displaying the data in the active buffer and blanck in the blanking area
+    VgaOutputActive
+} VgaOutputState;
 
-typedef struct _Bpp3State {
-    /// \brief Word-aligned number of pixel per lines
+/// State associated to the 8bpp display modality
+typedef struct _Bpp8State {
+    /// Word-aligned number of pixel per lines
     /// \remarks By enforcing a word-aliged line, we can use the DMA 32 bit memory access
     UInt16 linePixels;
+    /// Current-displaing line bytes offset
     UInt32 currentLineOffset;
-
+    /// Current DMA controller
     DMA_TypeDef* screenLineDMAController;
+    /// Current DMA stream
     DMA_Stream_TypeDef* screenLineDMAStream;
-} Bpp3State;
+} Bpp8State;
 
+/// Internal screen buffer extension
 struct _VgaScreenBuffer {
+    /// Base screen buffer definition
     ScreenBuffer base;
-
+    /// Pointer to the allocated native video frame buffer
     BYTE* BufferPtr;
-    /// \brief Size of the buffer allocated (in bytes)
+    /// Size of the buffer allocated (in bytes)
     UInt32 bufferSize;
 
-    /// @brief State of the buffer depending on the selected color mode
+    /// State of the display output depending on the selected color mode
     union {
-        Bpp3State Bpp8;
-    } bufferState;
-
+        Bpp8State Bpp8;
+    } displayState;
+    /// Timing associated to the current frame buffer
     VgaVideoFrameInfo VideoFrameTiming;
-    VGAOutputState outputState;
+    /// Current state of the output
+    VgaOutputState outputState;
 
-    /// \brief Lines prescaling constant
-    /// If the resolution is "software" scaled, we may have to display the same lime for a given number of real "lines"
+    /// Lines prescaling constant
+    /// If the resolution is "software" scaled, we may have to display the same line for a given number of real "lines"
     BYTE linePrescaler;
-    /// \brief Lines prescaler counter. When the counter reaches the prescaling constant, a new line will displayed
+    /// Lines prescaler counter. When the counter reaches the prescaling constant, a new line will displayed
     SBYTE linePrescalerCnt;
 
-    /// \brief VGA is in the vertical porch/sync state
-    ///
+    /// VGA is in the vertical porch/sync state
     /// \remarks In this stage, the VGA monitor is using the RBG channels as black level calibration so our
     /// signals should be blanked out
     /// Reference: https://electronics.stackexchange.com/a/209494
@@ -149,17 +153,19 @@ void TIM1_CC_IRQHandler(void) {
         return;
     }
 
-    if (screenBuffer->outputState == VGAOutputStopped) {
+    if (screenBuffer->outputState == VgaOutputStopped) {
         // Video is going to be stopped. Exiting
         return;
     }
 
     if (screenBuffer->base.bitsPerPixel == Bpp8) {
-        HandleHSyncInterruptFor3bpp(screenBuffer, isLineStartIRQ);
+        HandleHSyncInterruptFor8bpp(screenBuffer, isLineStartIRQ);
     }
 }
 
 void TIM3_IRQHandler() {
+    // VSYNC timer should be super simple, all the logic goes to the HSYNC interrupt
+    // We simply need to set a flag that is indicating that we are Vsyncing
     uint32_t timStatus = TIM3->SR;
     uint32_t isVisibleFrameStartIRQ = READ_BIT(timStatus, TIM_FLAG_CC2);
     uint32_t isVisibleFrameEndIRQ = READ_BIT(timStatus, TIM_FLAG_CC3);
@@ -187,8 +193,8 @@ void TIM3_IRQHandler() {
     //DebugWriteChar('v' + isVSyncing);
 }
 
-void HandleHSyncInterruptFor3bpp(VgaScreenBuffer* screenBuffer, UInt32 isLineStart) {
-    Bpp3State* bpp3State = &screenBuffer->bufferState.Bpp8;
+void HandleHSyncInterruptFor8bpp(VgaScreenBuffer* screenBuffer, UInt32 isLineStart) {
+    Bpp8State* bpp3State = &screenBuffer->displayState.Bpp8;
     if (screenBuffer->vSyncing) {
         //DebugWriteChar('V');
 
@@ -228,11 +234,11 @@ void HandleHSyncInterruptFor3bpp(VgaScreenBuffer* screenBuffer, UInt32 isLineSta
         //DebugWriteChar('S');
     }
     else {
-        HandleDMALineEndFor3Bpp(screenBuffer);
+        HandleDMALineEndFor8Bpp(screenBuffer);
     }
 }
 
-void HandleDMALineEndFor3Bpp(VgaScreenBuffer* screenBuffer) {
+void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
     // We are in the porch section, we have a little more time to do all of our stuff
     /* First thing that we have to do: check that the DMA has completed the transfer */
     // The ideal should check if the DMA is completed, otherwhise we have done something wrong with the timing and "raise" and error
@@ -251,7 +257,7 @@ void HandleDMALineEndFor3Bpp(VgaScreenBuffer* screenBuffer) {
      // bus matrix contention
      // So there is only one thing for it: even if there are more data to be transferred, we stop the DMA and (if necessary) force the output to low
      // so that the black calibration of the monitor can still do its work
-    Bpp3State* bpp3State = &screenBuffer->bufferState.Bpp8;
+    Bpp8State* bpp3State = &screenBuffer->displayState.Bpp8;
     DMA_Stream_TypeDef* dmaStream = bpp3State->screenLineDMAStream;
     DisableLineDMA(dmaStream);
 
@@ -302,7 +308,8 @@ void HandleDMALineEndFor3Bpp(VgaScreenBuffer* screenBuffer) {
     // Source memory address is simply buffer start + current line offset
     dmaStream->M0AR = ((UInt32)screenBuffer->BufferPtr) + ((UInt32)bpp3State->currentLineOffset);
 
-    if (bpp3State->currentLineOffset < screenBuffer->bufferSize) {
+    if (bpp3State->currentLineOffset < screenBuffer->bufferSize && 
+        screenBuffer->outputState == VgaOutputActive) {
         // If the buffer is within the limits, we enable the dma stream
         // This will only preload the data in the FIFO (at least in Mem2Per mode) [AN4031- Section 2.2.2]
         SET_BIT(dmaStream->CR, DMA_SxCR_EN);
@@ -314,6 +321,7 @@ void HandleDMALineEndFor3Bpp(VgaScreenBuffer* screenBuffer) {
         dmaStream->NDTR = 0;
     }
 
+    // Let's make sure our endline interrupt does not take too long
     if (READ_BIT(TIM1->SR, TIM_FLAG_CC3) != 0) {
         Error_Handler();
     }
@@ -324,6 +332,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     // Let's cache our info data in local variables
     Bpp localBpp = info->BitsPerPixel;
 
+    // Let's prepare the base ScreenBuffer informations
     ScreenBuffer screenBufferInfos = { 0 };
     screenBufferInfos.bitsPerPixel = localBpp;
     // We write as the screen width out visible line pixels
@@ -337,14 +346,16 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
 
     size_t framebufferSize = 0;
     if (localBpp == Bpp8) {
-        Bpp3State* bpp3State = &vgaScreenBuffer->bufferState.Bpp8;
+        Bpp8State* bpp8State = &vgaScreenBuffer->displayState.Bpp8;
+        // Let's reset the line offset
+        bpp8State->currentLineOffset = 0;
 
         // We calculate the border pixels to have an word-aligned buffer width
         BYTE borderPixels = (BYTE)((4 - (screenBufferInfos.screenSize.width & 0x3)) & 0x3);
 
-        bpp3State->linePixels = (UInt16)(screenBufferInfos.screenSize.width + borderPixels);
-        framebufferSize = bpp3State->linePixels;
-        DebugAssert((bpp3State->linePixels & 0x3) == 0); // make sure we have done everything right
+        bpp8State->linePixels = (UInt16)(screenBufferInfos.screenSize.width + borderPixels);
+        framebufferSize = bpp8State->linePixels;
+        DebugAssert((bpp8State->linePixels & 0x3) == 0); // make sure we have done everything right
 
         // 8bpp supports optimized 32bit pixel writes
         screenBufferInfos.packSizePower = 2;
@@ -360,7 +371,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
 
     // framebufferSize here contains the number of bytes requires for a single line depending of the mode
     // We simply now multiply the lines and double everything if double buffered
-    framebufferSize = (size_t)(framebufferSize * (size_t)screenBufferInfos.screenSize.height);
+    framebufferSize = ((size_t)screenBufferInfos.screenSize.height) * framebufferSize;
 
     // We store the new buffer size
     vgaScreenBuffer->bufferSize = framebufferSize;
@@ -385,7 +396,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     // Let's initialize the border pixels -> these will remain untouched for the rest of the application lifetime
     for (int line = 0; line < screenBufferInfos.screenSize.height; line++) {
         if (localBpp == Bpp8) {
-            UInt16 totalLinePixels = vgaScreenBuffer->bufferState.Bpp8.linePixels;
+            UInt16 totalLinePixels = vgaScreenBuffer->displayState.Bpp8.linePixels;
             for (int pixel = screenBufferInfos.screenSize.width; pixel < totalLinePixels; pixel++) {
                 // RGB write in 1 single byte
                 buffer[line * totalLinePixels + pixel] = 0x00;
@@ -479,7 +490,7 @@ void DrawPixel(PointS pixel, const Pen* pen) {
 #endif // DRAWPIXELASSERT
 
     if (buffer->base.bitsPerPixel == Bpp8) {
-        BYTE* vgaBufferPtr = &buffer->BufferPtr[pixel.y * buffer->bufferState.Bpp8.linePixels + pixel.x];
+        BYTE* vgaBufferPtr = &buffer->BufferPtr[pixel.y * buffer->displayState.Bpp8.linePixels + pixel.x];
         Draw3bppPixelImpl(vgaBufferPtr, pen->color);
     }
 }
@@ -495,7 +506,7 @@ void DrawPixelPack(PointS pixel, const Pen* pen) {
 
     // We need to calculate the pack address. In our case, the pack address must be 32 bit aligned since we are using a 32bit
     // memory access. The processor will throw an exception if the access is not aligned.
-    BYTE* pixelPtr = &buffer->BufferPtr[pixel.y * buffer->bufferState.Bpp8.linePixels + pixel.x];
+    BYTE* pixelPtr = &buffer->BufferPtr[pixel.y * buffer->displayState.Bpp8.linePixels + pixel.x];
     DebugAssert(((UInt32)pixelPtr & 0x03) == 0x0);
 
     ARGB8Color color = pen->color;
@@ -691,14 +702,13 @@ VgaError SetupTimers(BYTE resScaling, VgaScreenBuffer* screenBuffer) {
     DebugAssert(vSyncTimer->CCR3 >= 0 && vSyncTimer->CCR3 < vSyncTimer->CCR1&& vSyncTimer->CCR3 > vSyncTimer->CCR2);
 
     vSyncTimer->EGR = TIM_EGR_UG;
-
     return VgaErrorNone;
 }
 
-void ShutdownDMAFor3BppBuffer(VgaScreenBuffer* screenBuffer) {
-    Bpp3State* bpp3BufState = &screenBuffer->bufferState.Bpp8;
+void ShutdownDMAFor8BppBuffer(VgaScreenBuffer* screenBuffer) {
+    Bpp8State* bpp8BufState = &screenBuffer->displayState.Bpp8;
     // 1) We disable the line DMA
-    DisableLineDMA(bpp3BufState->screenLineDMAStream);
+    DisableLineDMA(bpp8BufState->screenLineDMAStream);
 
     // 2) We can disable the timer DMA trigger
     __HAL_TIM_DISABLE_DMA(screenBuffer->hSyncClockTimer, TIM_DMA_TRIGGER);
@@ -741,8 +751,11 @@ VgaError VgaCreateScreenBuffer(const VgaVisualizationInfo* visualizationInfo, Sc
         return result;
     }
 
-    vgaScreenBuffer->outputState = VGAOutputStopped;
-    vgaScreenBuffer->vSyncing = 0;
+    // Let's reset the screen buffer output state (stopped since we are displaying nothig)
+    // and let's fix the Bpp and the frame timing
+    // All the others informations will be set in the AllocateFrameBuffer section
+    // since they are size and scaling dependent
+    vgaScreenBuffer->outputState = VgaOutputStopped;
     vgaScreenBuffer->base.bitsPerPixel = visualizationInfo->BitsPerPixel;
     vgaScreenBuffer->VideoFrameTiming = scaledVideoTimings;
 
@@ -751,14 +764,17 @@ VgaError VgaCreateScreenBuffer(const VgaVisualizationInfo* visualizationInfo, Sc
         return result;
     }
 
+    // Let's eventually also register the timer references
     vgaScreenBuffer->mainPixelClockTimer = visualizationInfo->mainTimer;
     vgaScreenBuffer->hSyncClockTimer = visualizationInfo->hSyncTimer;
     vgaScreenBuffer->vSyncClockTimer = visualizationInfo->vSyncTimer;
 
-    vgaScreenBuffer->bufferState.Bpp8.screenLineDMAController = DMA2;
-    vgaScreenBuffer->bufferState.Bpp8.screenLineDMAStream = visualizationInfo->lineDMA->Instance;
-    // TODO Calculate this based on stream number
-    vgaScreenBuffer->dmaClearFlags = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0;
+    if (visualizationInfo->BitsPerPixel == Bpp8) {
+        // Let's hardcode that we are using DMA2 stream 0
+        vgaScreenBuffer->displayState.Bpp8.screenLineDMAController = DMA2;
+        vgaScreenBuffer->displayState.Bpp8.screenLineDMAStream = visualizationInfo->lineDMA->Instance;
+        vgaScreenBuffer->dmaClearFlags = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CFEIF0;
+    }
 
     /*if ((result = SetupMainClockTree(scaledVideoTimings.PixelFrequencyMHz)) != VgaErrorNone) {
      return result;
@@ -772,10 +788,10 @@ VgaError VgaCreateScreenBuffer(const VgaVisualizationInfo* visualizationInfo, Sc
         // When using the 8bpp visualization, we use the low 8 GPIOE pins to output our colors:
         // 3 bits for blue, 3 bits for green, 2 bits for red, in "little-endian" order (Red -> [0, 1], Green -> [2, 4], Blu -> [5-7])
 
-        DMA_Stream_TypeDef* dmaStream = vgaScreenBuffer->bufferState.Bpp8.screenLineDMAStream;
+        DMA_Stream_TypeDef* dmaStream = vgaScreenBuffer->displayState.Bpp8.screenLineDMAStream;
         dmaStream->PAR = (uint32_t)&GPIOE->ODR;
         dmaStream->M0AR = (uint32_t)vgaScreenBuffer->BufferPtr;
-        dmaStream->NDTR = (uint32_t)vgaScreenBuffer->bufferState.Bpp8.linePixels;
+        dmaStream->NDTR = (uint32_t)vgaScreenBuffer->displayState.Bpp8.linePixels;
 
     }
 
@@ -784,23 +800,32 @@ VgaError VgaCreateScreenBuffer(const VgaVisualizationInfo* visualizationInfo, Sc
     return VgaErrorNone;
 }
 
-VgaError VGAReleaseScreenBuffer(ScreenBuffer* screenBuffer) {
+VgaError VgaReleaseScreenBuffer(ScreenBuffer* screenBuffer) {
     if (!screenBuffer) {
         return VgaErrorInvalidParameter;
     }
-    VgaScreenBuffer* vgaBuffer = (VgaScreenBuffer*)screenBuffer;
 
-    rfree(vgaBuffer->BufferPtr, vgaBuffer->bufferSize);
-    // Zeroing everything to make sure the buffer will be not reused
-    *vgaBuffer = (VgaScreenBuffer){ 0 };
-    // TODO: check consistency of this with parameter?
+    VgaScreenBuffer* vgaBuffer = (VgaScreenBuffer*)screenBuffer;
+    if (vgaBuffer->outputState != VgaOutputStopped) {
+        // VGA output must be stopped when releasing the buffer
+        return VgaErrorInvalidParameter;
+    }
+    // First we delete our internal reference (no interrupt should be active since the output
+    // must be stopped but let's make sure no one is using this reference)
     _activeScreenBuffer = NULL;
 
+    // We free our RAM-allocated buffer pointer
+    rfree(vgaBuffer->BufferPtr, vgaBuffer->bufferSize);
+
+    // Zeroing everything to make sure the buffer will be not reused
+    *vgaBuffer = (VgaScreenBuffer){ 0 };
+
+    // Eventually we release the screen buffer
     free(vgaBuffer);
     return VgaErrorNone;
 }
 
-VgaError VGADumpTimersFrequencies() {
+VgaError VgaDumpTimersFrequencies() {
     VgaScreenBuffer* screenBuf = _activeScreenBuffer;
     if (screenBuf == NULL) {
         // VGA screen buffer not allocated and registered
@@ -861,14 +886,14 @@ VgaError VGADumpTimersFrequencies() {
     return VgaErrorNone;
 }
 
-VgaError VGAStartOutput() {
+VgaError VgaStartOutput() {
     VgaScreenBuffer* screenBuf = _activeScreenBuffer;
     if (screenBuf == NULL) {
         // VGA screen buffer not allocated and registered
         return VGAErrorInvalidState;
     }
 
-    if (screenBuf->outputState != VGAOutputStopped) {
+    if (screenBuf->outputState != VgaOutputStopped) {
         // VGA screen buffer not allocated and registered
         return VGAErrorInvalidState;
     }
@@ -892,58 +917,72 @@ VgaError VGAStartOutput() {
     HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start_IT(screenBuf->vSyncClockTimer, TIM_CHANNEL_3);
 
-    Bpp3State* bpp3State = &screenBuf->bufferState.Bpp8;
-    // Before starting we clear all the flags in case a previous transfer was completed/cancelled
-    SET_BIT(bpp3State->screenLineDMAController->LIFCR, screenBuf->dmaClearFlags);
-    SET_BIT(bpp3State->screenLineDMAStream->CR, DMA_SxCR_EN);
+    if (screenBuf->base.bitsPerPixel == Bpp8) {
+        Bpp8State* bpp8State = &screenBuf->displayState.Bpp8;
+        // Before starting we clear all the flags in case a previous transfer was completed/cancelled
+        SET_BIT(bpp8State->screenLineDMAController->LIFCR, screenBuf->dmaClearFlags);
+        SET_BIT(bpp8State->screenLineDMAStream->CR, DMA_SxCR_EN);
 
-    //DebugAssert((READ_BIT(bpp3State->screenLineDMAStream->CR, DMA_SxCR_EN)) != 0);
+        UInt32 thresholdSelected = READ_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
+        UInt32 fifoStatusToReach;
 
-    UInt32 thresholdSelected = READ_BIT(bpp3State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
-    UInt32 fifoStatusToReach;
+        switch (thresholdSelected) {
+        case DMA_FIFO_THRESHOLD_1QUARTERFULL:
+            fifoStatusToReach = DMA_SxFCR_FS_0; // 1/4 <= Level < 1/2
+            break;
+        case DMA_FIFO_THRESHOLD_HALFFULL:
+            fifoStatusToReach = DMA_SxFCR_FS_1; // 1/2 <= Level < 3/4
+            break;
+        case DMA_FIFO_THRESHOLD_3QUARTERSFULL:
+            fifoStatusToReach = DMA_SxFCR_FS_1 | DMA_SxFCR_FS_0; // 3/4 <= Level < Full
+            break;
+        case DMA_FIFO_THRESHOLD_FULL:
+            fifoStatusToReach = DMA_SxFCR_FS_2 | DMA_SxFCR_FS_0; // Full
+            break;
+        default:
+            Error_Handler();
+            break;
+        }
 
-    switch (thresholdSelected) {
-    case DMA_FIFO_THRESHOLD_1QUARTERFULL:
-        fifoStatusToReach = DMA_SxFCR_FS_0; // 1/4 <= Level < 1/2
-        break;
-    case DMA_FIFO_THRESHOLD_HALFFULL:
-        fifoStatusToReach = DMA_SxFCR_FS_1; // 1/2 <= Level < 3/4
-        break;
-    case DMA_FIFO_THRESHOLD_3QUARTERSFULL:
-        fifoStatusToReach = DMA_SxFCR_FS_1 | DMA_SxFCR_FS_0; // 3/4 <= Level < Full
-        break;
-    case DMA_FIFO_THRESHOLD_FULL:
-        fifoStatusToReach = DMA_SxFCR_FS_2 | DMA_SxFCR_FS_0; // Full
-        break;
-    default:
-        Error_Handler();
-        break;
+        // Let's just wait the FIFO is effectively filled
+        // NB: Didn't find anything in the documentation that states that this operation is necessary  but let's keep it anyway
+        // If there is some problem with the FIFO we may end up being blocked in this infinite loop and track down the problem
+        while (READ_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FS) != fifoStatusToReach) {
+
+        }
     }
 
-    // Let's just wait the FIFO is effectively filled
-    // NB: Didn't find anything in the documentation that states that this operation is necessary  but let's keep it anyway
-    // If there is some problem with the FIFO we may end up being blocked in this infinite loop and track down the problem
-    while (READ_BIT(bpp3State->screenLineDMAStream->FCR, DMA_SxFCR_FS) != fifoStatusToReach) {
-
-    }
-    screenBuf->outputState = VGAOutputActive;
-
-    // END STEP: we start the main timer. The main timer directly feeds the Hsync so we don't need any
+    screenBuf->outputState = VgaOutputActive;
+    // Final STEP: we start the main timer. The main timer directly feeds the Hsync so we don't need any
     // output
-    // We also set activate
+    // We also set the active output state
     HAL_TIM_Base_Start(screenBuf->mainPixelClockTimer);
     return VgaErrorNone;
 }
 
-VgaError VGASuspendOutput() {
+VgaError VgaSuspendOutput() {
+    VgaScreenBuffer* screenBuf = _activeScreenBuffer;
+    if (screenBuf == NULL) {
+        // VGA screen buffer not allocated and registered
+        return VGAErrorInvalidState;
+    }
 
+    screenBuf->outputState = VgaOutputSuspended;
+    return VgaErrorNone;
 }
 
-VgaError VGAResumeOutput() {
+VgaError VgaResumeOutput() {
+    VgaScreenBuffer* screenBuf = _activeScreenBuffer;
+    if (screenBuf == NULL) {
+        // VGA screen buffer not allocated and registered
+        return VGAErrorInvalidState;
+    }
 
+    screenBuf->outputState = VgaOutputActive;
+    return VgaErrorNone;
 }
 
-VgaError VGAStopOutput() {
+VgaError VgaStopOutput() {
     VgaScreenBuffer* screenBuf = _activeScreenBuffer;
     if (screenBuf == NULL) {
         // VGA screen buffer not allocated and registered
@@ -954,10 +993,10 @@ VgaError VGAStopOutput() {
     // In this way our timers IRQ_Handlers will do nothing
     // This is necessary since, as stated in the "Tips and Warning" section of DMA controller [Section 4.1; AN4031]
     // we first have to disable the DMA, wait for its EN bit to become 0 and then disable the peripheral
-    screenBuf->outputState = VGAOutputStopped;
+    screenBuf->outputState = VgaOutputStopped;
 
     if (screenBuf->base.bitsPerPixel == Bpp8) {
-        ShutdownDMAFor3BppBuffer(screenBuf);
+        ShutdownDMAFor8BppBuffer(screenBuf);
     }
 
     // At the end we stop our timers. First we stop our main timer to avoid any other interrupt to be issued
