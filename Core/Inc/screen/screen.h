@@ -24,9 +24,9 @@
 #include <typedefs.h>
 
  /// Calculates a color from the RGB values (alpha set at 0xFF)
-#define SCREEN_RGB(r, b, g) ((0xFF000000) | (((r) & 0xFF) << 16) | (((g) & 0xFF) << 8) | ((b) & 0xFF))
+#define SCREEN_RGB(r, g, b) ((0xFF000000) | (((r) & 0xFF) << 16) | (((g) & 0xFF) << 8) | ((b) & 0xFF))
  /// Calculates a color from the ARGB values
-#define SCREEN_ARGB(a, r, b, g) ((((a) & 0xFF) << 24) | (((r) & 0xFF) << 16) | (((g) & 0xFF) << 8) | ((b) & 0xFF))
+#define SCREEN_ARGB(a, r, g, b) ((((a) & 0xFF) << 24) | (((r) & 0xFF) << 16) | (((g) & 0xFF) << 8) | ((b) & 0xFF))
 
 /// Bit depth of the native frame buffer
 typedef enum _Bpp {

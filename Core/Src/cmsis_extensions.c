@@ -1,10 +1,3 @@
-/*
- * cmsis_extensions.c
- *
- *  Created on: Nov 6, 2021
- *      Author: mnznn
- */
-
 #include <cmsis_extensions.h>
 
  // ##### Private define declarations #####
@@ -19,7 +12,7 @@ static void EnforeStackProtection(TaskHandle_t handle);
 void EnforeStackProtection(TaskHandle_t handle)
 {
     // To assert that we have run out of stack, we can ALSO implement this simple check
-    // FreeRTOS gives us the possibility to check the remaing space in the stack of a specific task
+    // FreeRTOS gives us the possibility to check the remaining space in the stack of a specific task
     // So we simply check that the space is greater than zero or less that the maximum available stack space
     // on the device; SRAM in our STMF407 (the code is in CCMRAM, but me may use some static allocated TCB)
 

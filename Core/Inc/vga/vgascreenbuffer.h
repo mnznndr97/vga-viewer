@@ -2,7 +2,7 @@
  * This file contains the headers for the management of the native VGA framebuffer
  *
  * The entry point is the function VgaCreateScreenBuffer that allocates, initialize a ScreenBuffer object and
- * stores it internally later retrieve the neccasry data inside the interrupt handlers.
+ * stores it internally later retrieve the necessary data inside the interrupt handlers.
  * The desired screen setup is specified via the VgaVisualizationInfo structure, passed as parameter to the function
  *
  * Frame timings are described by the VgaVideoFrameInfo structure

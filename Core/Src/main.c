@@ -288,7 +288,7 @@ int main(void) {
 
 	// We enable the Data Watchpoint Trigger cycles counter
 	// DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-	// We need to disable the io buffering to have the data directly sended
+	// We need to disable the io buffering to have the data directly sent
 	setvbuf(stdout, NULL, _IONBF, 0);
 	Crc7Initialize();
 	Crc16Initialize();
