@@ -38,6 +38,10 @@ static BmpResult ValidateIdentifier(const Bmp* pBmp);
 /// Reads the image data offset from the BMP file in the Bmp description
 /// @return Status of the operation
 static BmpResult ReadBufferOffset(Bmp* pBmp);
+/// Display a bitmap on the screen that have the exact resolution of the destination frame buffer
+static BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer);
+/// Display a bitmap on the screen applying a resize algorithm
+static BmpResult SlowDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer);
 
 BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer) {
     // We seek to the data section of the BMP
@@ -46,15 +50,10 @@ BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer
         return BmpResultFailure;
     }
 
-    /// Row is padded with zero to be a multiple of DWORD
-    UInt32 rowByteSize = ((cpBmp->bitCount * cpBmp->width) + 31) / 32; // DWord size
-    rowByteSize *= 4;
-
     Pen pen = { 0 };
     pen.color.components.A = 0xFF;
 
-    PointS point;
-
+    PointS point = { 0 };
     // From our beloved MSDN https://docs.microsoft.com/en-us/windows/win32/gdi/about-bitmaps
     // The bitmap scanline are stored in reverse order
     UInt32 currentRowPos = f_tell(cpBmp->fileHandle);
@@ -84,8 +83,66 @@ BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer
             ScreenDrawPixel(cpScreenBuffer, point, &pen);
         }
 
-        currentRowPos += rowByteSize;
+        currentRowPos += cpBmp->rowByteSize;
     }
+    return BmpResultOk;
+}
+
+BmpResult GetPixelNN(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer, PointS pixelPt, float invScaleX, float invScaleY, UInt32* color) {
+    // Algorithm from https://towardsdatascience.com/image-processing-image-scaling-algorithms-ae29aaa6b36c
+    // We only use the inverse scaling factor calculation to deal with multiplications here
+
+    int nearestX = (int)((float)pixelPt.x * invScaleX);
+    int nearestY = (int)((float)pixelPt.y * invScaleY);
+
+    // Let's ignore some possible border pixel if the image has a strange resolution
+    if (nearestX < 0 || nearestX >= cpBmp->width) return BmpResultOk;
+    if (nearestY < 0 || nearestY >= cpBmp->height) return BmpResultOk;
+
+    int scanLineIndex = (int)cpBmp->height - nearestY;
+    size_t pixelOffset = (size_t)((scanLineIndex * (int)cpBmp->rowByteSize) + (nearestX * 3));
+    // We seek to the data section of the BMP
+    FRESULT result = f_lseek(cpBmp->fileHandle, cpBmp->dataOffset + pixelOffset);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+
+    UINT read = 0;
+    result = f_read(cpBmp->fileHandle, color, 3, &read);
+    if (result != FR_OK) {
+        return BmpResultFailure;
+    }
+
+    return BmpResultOk;
+}
+
+BmpResult SlowDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer) {
+    float invScaleX = (float)cpBmp->width / (float)cpScreenBuffer->screenSize.width;
+    float invScaleY = (float)cpBmp->height / (float)cpScreenBuffer->screenSize.height;
+
+    PointS pixelPt = { 0 };
+    Pen pen = { 0 };
+    pen.color.components.A = 0xFF;
+
+    DebugWriteChar('n');
+    // Scanlines are stored in reverse order in out Bmp
+    for (int y = cpScreenBuffer->screenSize.height - 1; y >= 0; y--)
+    {
+        pixelPt.y = (Int16)y;
+        for (int x = 0; x < cpScreenBuffer->screenSize.width; x++)
+        {
+            pixelPt.x = (Int16)x;
+            BmpResult result = GetPixelNN(cpBmp, cpScreenBuffer, pixelPt, invScaleX, invScaleY, &pen.color.argb);
+            if (result != BmpResultOk) {
+                // Error: let's interrupt the drawing loop
+                return result;
+            }
+
+            ScreenDrawPixel(cpScreenBuffer, pixelPt, &pen);
+        }
+    }
+    DebugWriteChar('N');
+
     return BmpResultOk;
 }
 
@@ -162,6 +219,10 @@ BmpResult ReadWindowsBitmapInfoHeader(Bmp* pBmp) {
     if (result != FR_OK || clrUsed != 0) {
         return BmpResultFailure;
     }
+
+    // Let's precalculate the row size
+    pBmp->rowByteSize = ((pBmp->bitCount * pBmp->width) + 31) / 32; // DWord size
+    pBmp->rowByteSize *= 4;
 
     return BmpResultOk;
 }
@@ -241,6 +302,9 @@ BmpResult BmpDisplay(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer) {
     // we can directly copy pixel by pixel
     if (cpScreenBuffer->screenSize.width == cpBmp->width && cpScreenBuffer->screenSize.height == cpBmp->height) {
         FastDisplayBitmap(cpBmp, cpScreenBuffer);
+    }
+    else {
+        SlowDisplayBitmap(cpBmp, cpScreenBuffer);
     }
 
     return BmpResultOk;

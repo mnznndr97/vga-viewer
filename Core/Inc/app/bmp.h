@@ -42,6 +42,8 @@ typedef struct _Bmp {
     UInt32 height;
     /// Bitmap BPP
     UInt16 bitCount;
+    /// Row size in bytes, which is the width padded with zero to be a multiple of DWORD
+    UInt32 rowByteSize;
 } Bmp;
 
 /// Tries to read a BMP from a already opened file handle
