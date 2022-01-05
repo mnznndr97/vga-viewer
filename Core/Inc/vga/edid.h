@@ -4,8 +4,8 @@
  * This files contains the Edid sub structures and descriptors, and the declaration
  * for the parsing and reading function
  * 
- * Bits with different meaning the same one-byte structure are modelled with C bit field
- * for semplicity
+ * Bits with different meaning the same one-byte structure are modeled with C bit field
+ * for simplicity
  * 
  * All the functions assume that a valid edid pointer is provided
  *
@@ -117,9 +117,9 @@ typedef struct _EDIDBasicDisplayParameters {
 		EdidDigitalInput DigitalInput;
 		EdidAnalogInput AnalogInput;
 	};
-	/// Horizontal screen size, in centimetres
+	/// Horizontal screen size, in centimeters
 	BYTE HCmScreenSize;
-	/// Vertical screen size, in centimetres
+	/// Vertical screen size, in centimeters
 	BYTE VCmScreenSize;
 	BYTE DisplayGamma;
 	/// Supported features bitmap 
@@ -197,7 +197,7 @@ inline float EdidGetGamma(const Edid *edid) {
 
 /// Validate the EDID with the checksum
 BOOL EdidIsChecksumValid(const Edid *edid);
-/// Checks if the timing is supperted by the provided EDID
+/// Checks if the timing is supported by the provided EDID
 /// @param edid EDID struct pointer
 /// @param timing VgaTiming
 BOOL EdidIsTimingSupported(const Edid *edid, EDIDTiming timing);

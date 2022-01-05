@@ -1,10 +1,3 @@
-/*
- * vgascreenbuffer.c
- *
- *  Created on: 1 nov 2021
- *      Author: mnznn
- */
-
 #include <vga/vgascreenbuffer.h>
 #include <assertion.h>
 #include <ram.h>

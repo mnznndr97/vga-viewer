@@ -1,10 +1,3 @@
-/*
- * sd.c
- *
- *  Created on: Dec 4, 2021
- *      Author: mnznn
- */
-
 #include <sd/sd.h>
 #include <sd/csd.h>
 #include <sd/ocr.h>
@@ -469,7 +462,7 @@ static SdStatus VerifyCardCapacityStatus() {
         _attachedSdCard.Capacity = SdCapacityStandard;
         _attachedSdCard.AddressingMode = SDAddressingModeByte;
 
-        printf("SD card version is 1.x. Assuming Standard capacty and byte addressing mode\r\n");
+        printf("SD card version is 1.x. Assuming Standard capacity and byte addressing mode\r\n");
     }
     else {
         SBYTE bytesRcv = SendCommand(SdCmd58ReadOrc, 0x0, sizeof(ResponseR3));
@@ -482,12 +475,12 @@ static SdStatus VerifyCardCapacityStatus() {
 
         PCResponseR3 r3 = (PCResponseR3)_responseBuffer;
         if (r3->OCR.CCS) {
-            printf("Card Capacity Status is set. Assuming Extended capacty and sector addressing mode\r\n");
+            printf("Card Capacity Status is set. Assuming Extended capacity and sector addressing mode\r\n");
             _attachedSdCard.Capacity = SdCapacityExtended;
             _attachedSdCard.AddressingMode = SDAddressingModeSector;
         }
         else {
-            printf("Card Capacity Status is NOT set. Assuming Standard capacty and byte addressing mode\r\n");
+            printf("Card Capacity Status is NOT set. Assuming Standard capacity and byte addressing mode\r\n");
             _attachedSdCard.Capacity = SdCapacityStandard;
             _attachedSdCard.AddressingMode = SDAddressingModeByte;
         }

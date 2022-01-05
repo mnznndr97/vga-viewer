@@ -1,10 +1,3 @@
-/*
- * binary.c
- *
- *  Created on: 13 dic 2021
- *      Author: mnznn
- */
-
 #include <binary.h>
 #include <string.h>
 
