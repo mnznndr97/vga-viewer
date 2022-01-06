@@ -670,8 +670,13 @@ VgaError SetupTimers(BYTE resScaling, VgaScreenBuffer* screenBuffer) {
 
     hSyncTimer->CCR1 = wholeLine - hTiming->SyncPulse; // Main HSYNC signal
     hSyncTimer->CCR2 = hTiming->BackPorch; // Black porch VSYNC trigger
-    hSyncTimer->CCR3 = hTiming->BackPorch - 24U; // DMA start (video line render start)
-    hSyncTimer->CCR4 = (UInt32)(hTiming->BackPorch + hTiming->VisibleArea + 8); // DMA end (video line render end)
+    // The correction delay is calculated empirically using the monitor in the default setting
+    hSyncTimer->CCR3 = hTiming->BackPorch - 18U; // DMA start (video line render start)
+    // We MUST be very strict in the line ending timing, otherwise the "auto correct picture" monitor
+    // feature will go mad
+    // We may correct the interrupt delay also here but this should not be a problem
+    // Let's just use the entire timing to see how the screen is drawn in this situation
+    hSyncTimer->CCR4 = (UInt32)(hTiming->BackPorch + hTiming->VisibleArea); // DMA end (video line render end)
 
     DebugAssert(hSyncTimer->CCR1 >= 0);
     DebugAssert(hSyncTimer->CCR2 >= 0 && hSyncTimer->CCR2 < hSyncTimer->CCR1);
