@@ -1,6 +1,6 @@
 /*
- * Header for the color ascii table application. The application simply display all 
- * the ascii characters
+ * Header for the color ASCII table application. The application simply display all
+ * the ASCII characters
  *
  *  Created on: Jan 5, 2022
  *      Author: Andrea Monzani [Mat 952817]
@@ -11,7 +11,7 @@
 
 #include <screen/screen.h>
 
- /// Initialize the ascii table application on the specified screen buffer
+ /// Initialize the ASCII table application on the specified screen buffer
 void AsciiTableInitialize(ScreenBuffer* screenBuffer);
 /// Input process function
 void AsciiTableProcessInput(char command);

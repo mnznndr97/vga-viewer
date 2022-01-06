@@ -32,10 +32,12 @@ static FILINFO _fileListSelectedFile;
 static BOOL _displayingError;
 const char* const FsRootDirectory = "";
 
+/// Flag that indicate that the output must be suspended when drawing an image
+BOOL _suspendOutput = 0;
+
 char _errorFormatBuffer[FORMAT_BUFFER_SIZE];
 
 /* Forward declaration section */
-
 
 /// Display the "SD mounting message" on the screen
 void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt32 background);
@@ -43,8 +45,12 @@ void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt3
 void DisplayFResultError(const ScreenBuffer* screenBuffer, FRESULT result, const char* description);
 /// Display a generic error on the screen with the specified description
 void DisplayGenericError(const ScreenBuffer* screenBuffer, const char* description);
-/// Draws on the screen the selected BMP file
+/// Draws on the screen the selected file
 void DrawSelectedFile();
+/// Draws on the screen the selected BMP file
+void DrawSelectedBmpFile();
+/// Draws on the screen the selected RAW file
+void DrawSelectedRawFile();
 
 /* Private section */
 
@@ -222,6 +228,16 @@ void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt3
 }
 
 void DrawSelectedFile() {
+    if (EndsWith(_fileListSelectedFile.fname, ".raw")) {
+        DrawSelectedRawFile();
+    }
+    else
+    {
+        DrawSelectedBmpFile();
+    }
+}
+
+void DrawSelectedBmpFile() {
     // We try to pen the file
     FRESULT openResult = f_open(&_fileHandle, _fileListSelectedFile.fname, FA_READ | FA_OPEN_EXISTING);
     if (openResult != FR_OK) {
@@ -232,7 +248,7 @@ void DrawSelectedFile() {
     // If opened, we need to read it as a Bitmap
     BmpResult result = BmpReadFromFile(&_fileHandle, &_bmpHandle);
     if (result != BmpResultOk) {
-        DisplayGenericError(_screenBuffer, "Unable read file as bitmap");
+        DisplayGenericError(_screenBuffer, "Unable to read file as bitmap");
         goto cleanup;
     }
 
@@ -246,29 +262,32 @@ cleanup:
 }
 
 void DrawSelectedRawFile() {
+    // We try to pen the file
     FRESULT openResult = f_open(&_fileHandle, _fileListSelectedFile.fname, FA_READ | FA_OPEN_EXISTING);
     if (openResult != FR_OK) {
-        DisplayFResultError(_screenBuffer, openResult, "Unable to open file");
+        DisplayFResultError(_screenBuffer, openResult, "Unable to open raw file");
         return;
     }
 
-    Pen pen;
-    pen.color.argb = SCREEN_RGB(0, 0, 0);
-    ScreenClear(_screenBuffer, &pen);
-
     UINT read;
+    Pen pen = { 0 };
     pen.color.components.A = 0xFF;
     PointS point;
-    for (size_t line = 0; line < 300; line++) {
-        point.y = line;
+    for (int line = 0; line < _screenBuffer->screenSize.height; line++) {
+        point.y = (Int16)line;
 
-        for (size_t j = 0; j < 400; j++) {
+        for (int x = 0; x < _screenBuffer->screenSize.width; x++) {
             UInt32 color = 0;
             BYTE* pColor = (BYTE*)&color;
 
             FRESULT readResult = f_read(&_fileHandle, pColor, 3, &read);
+            if (readResult != FR_OK) {
+                DisplayGenericError(_screenBuffer, "Unable to read raw file");
+                goto cleanup;
+            }
             DebugAssert(read == 3);
 
+            // Raw components are not in little endian
             pen.color.components.R = pColor[0];
             pen.color.components.G = pColor[1];
             pen.color.components.B = pColor[2];
@@ -276,11 +295,13 @@ void DrawSelectedRawFile() {
                 Error_Handler();
             }
 
-            point.x = j;
+            point.x = (Int16)x;
             ScreenDrawPixel(_screenBuffer, point, &pen);
         }
     }
 
+    // If we cannot load the RAW, we still have to close the file
+cleanup:
     f_close(&_fileHandle);
 }
 
@@ -323,7 +344,7 @@ void DrawFileList() {
         // We want do display only .bmp and .raw files
         // let's ignore case sensitivity for the moment
         if ((!EndsWith(_fileInfoHandle.fname, ".bmp")) &&
-        	(!EndsWith(_fileInfoHandle.fname, ".raw"))) continue;
+            (!EndsWith(_fileInfoHandle.fname, ".raw"))) continue;
 
         // Let's draw the name a little bit shifted
         PointS nameDrawPoint = rowPoint;
@@ -337,7 +358,7 @@ void DrawFileList() {
 
             // We draw the rectangle a little bit larger to correct the string offset
             stringRectSize.width = (Int16)(stringRectSize.width + rowPadding * 2);
-            ScreenFillRectangle(_screenBuffer, rowPoint, stringRectSize, &pen);           
+            ScreenFillRectangle(_screenBuffer, rowPoint, stringRectSize, &pen);
 
             // We draw the string and we reset the original color
             pen.color.argb = SCREEN_RGB(0xFF, 0xFF, 0xFF);
@@ -398,10 +419,17 @@ void ExplorerProcessInput(char command) {
     else if (command == '\b') {
         DrawFileList();
     }
+    else if (command == 'o') {
+        // Toggles output suspension
+        _suspendOutput = !_suspendOutput;
+        printf("Output suspend: %s\r\n", _suspendOutput ? "enabled" : "disabled");
+    }
     else if (command == '\r' || command == '\n' || command == ' ') {
-        VgaSuspendOutput();
+        if (_suspendOutput)
+            VgaSuspendOutput();
         DrawSelectedFile();
-        VgaResumeOutput();
+        if (_suspendOutput)
+            VgaResumeOutput();
     }
 
 }
