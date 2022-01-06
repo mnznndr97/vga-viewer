@@ -91,13 +91,23 @@ UART_HandleTypeDef huart4;
 
 /* Definitions for vgaConnectionTa */
 osThreadId_t vgaConnectionTaHandle;
-const osThreadAttr_t vgaConnectionTa_attributes = { .name = "vgaConnectionTa", .stack_size = 208 * 4, .priority = (osPriority_t)osPriorityNormal, };
+const osThreadAttr_t vgaConnectionTa_attributes = {
+  .name = "vgaConnectionTa",
+  .stack_size = 208 * 4,
+  .priority = (osPriority_t)osPriorityNormal,
+};
 /* Definitions for _mainTask */
 osThreadId_t _mainTaskHandle;
-const osThreadAttr_t _mainTask_attributes = { .name = "_mainTask", .stack_size = 300 * 4, .priority = (osPriority_t)osPriorityNormal, };
+const osThreadAttr_t _mainTask_attributes = {
+  .name = "_mainTask",
+  .stack_size = 300 * 4,
+  .priority = (osPriority_t)osPriorityNormal,
+};
 /* Definitions for _vgaEDIDRcvEvnt */
 osEventFlagsId_t _vgaEDIDRcvEvntHandle;
-const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = { .name = "_vgaEDIDRcvEvnt" };
+const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = {
+  .name = "_vgaEDIDRcvEvnt"
+};
 /* USER CODE BEGIN PV */
 
 static Edid _vgaEDID = { 0 };
@@ -319,15 +329,16 @@ static void DrawMainScreen() {
 /* USER CODE END 0 */
 
 /**
- * @brief  The application entry point.
- * @retval int
- */
-int main(void) {
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
     /* USER CODE BEGIN 1 */
 
-    // We enable the Data Watchpoint Trigger cycles counter
-    // DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    // We need to disable the io buffering to have the data directly sent
+        // We enable the Data Watchpoint Trigger cycles counter
+        // DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+        // We need to disable the io buffering to have the data directly sent
     setvbuf(stdout, NULL, _IONBF, 0);
     Crc7Initialize();
     Crc16Initialize();
@@ -386,19 +397,19 @@ int main(void) {
     osKernelInitialize();
 
     /* USER CODE BEGIN RTOS_MUTEX */
-    /* add mutexes, ... */
+        /* add mutexes, ... */
     /* USER CODE END RTOS_MUTEX */
 
     /* USER CODE BEGIN RTOS_SEMAPHORES */
-    /* add semaphores, ... */
+        /* add semaphores, ... */
     /* USER CODE END RTOS_SEMAPHORES */
 
     /* USER CODE BEGIN RTOS_TIMERS */
-    /* start timers, add new ones, ... */
+        /* start timers, add new ones, ... */
     /* USER CODE END RTOS_TIMERS */
 
     /* USER CODE BEGIN RTOS_QUEUES */
-    /* add queues, ... */
+        /* add queues, ... */
     /* USER CODE END RTOS_QUEUES */
 
     /* Create the thread(s) */
@@ -411,14 +422,14 @@ int main(void) {
     /* USER CODE BEGIN RTOS_THREADS */
     CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
     /* add threads, ... */
-    /* USER CODE END RTOS_THREADS */
+  /* USER CODE END RTOS_THREADS */
 
-    /* Create the event(s) */
-    /* creation of _vgaEDIDRcvEvnt */
+  /* Create the event(s) */
+  /* creation of _vgaEDIDRcvEvnt */
     _vgaEDIDRcvEvntHandle = osEventFlagsNew(&_vgaEDIDRcvEvnt_attributes);
 
     /* USER CODE BEGIN RTOS_EVENTS */
-    /* add events, ... */
+        /* add events, ... */
     /* USER CODE END RTOS_EVENTS */
 
     /* Start scheduler */
@@ -436,20 +447,21 @@ int main(void) {
 }
 
 /**
- * @brief System Clock Configuration
- * @retval None
- */
-void SystemClock_Config(void) {
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
     RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
     RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
 
     /** Configure the main internal regulator output voltage
-     */
+    */
     __HAL_RCC_PWR_CLK_ENABLE();
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
     /** Initializes the RCC Oscillators according to the specified parameters
-     * in the RCC_OscInitTypeDef structure.
-     */
+    * in the RCC_OscInitTypeDef structure.
+    */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
     RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -458,28 +470,32 @@ void SystemClock_Config(void) {
     RCC_OscInitStruct.PLL.PLLN = 120;
     RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
     RCC_OscInitStruct.PLL.PLLQ = 7;
-    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
         Error_Handler();
     }
     /** Initializes the CPU, AHB and APB buses clocks
-     */
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    */
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+        | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
     RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK) {
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+    {
         Error_Handler();
     }
 }
 
 /**
- * @brief DAC Initialization Function
- * @param None
- * @retval None
- */
-static void MX_DAC_Init(void) {
+  * @brief DAC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_DAC_Init(void)
+{
 
     /* USER CODE BEGIN DAC_Init 0 */
 
@@ -491,21 +507,24 @@ static void MX_DAC_Init(void) {
 
     /* USER CODE END DAC_Init 1 */
     /** DAC Initialization
-     */
+    */
     hdac.Instance = DAC;
-    if (HAL_DAC_Init(&hdac) != HAL_OK) {
+    if (HAL_DAC_Init(&hdac) != HAL_OK)
+    {
         Error_Handler();
     }
     /** DAC channel OUT1 config
-     */
+    */
     sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
     sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
-    if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK) {
+    if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK)
+    {
         Error_Handler();
     }
     /** DAC channel OUT2 config
-     */
-    if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_2) != HAL_OK) {
+    */
+    if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_2) != HAL_OK)
+    {
         Error_Handler();
     }
     /* USER CODE BEGIN DAC_Init 2 */
@@ -515,11 +534,12 @@ static void MX_DAC_Init(void) {
 }
 
 /**
- * @brief I2C2 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_I2C2_Init(void) {
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
 
     /* USER CODE BEGIN I2C2_Init 0 */
 
@@ -537,7 +557,8 @@ static void MX_I2C2_Init(void) {
     hi2c2.Init.OwnAddress2 = 0;
     hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
     hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-    if (HAL_I2C_Init(&hi2c2) != HAL_OK) {
+    if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+    {
         Error_Handler();
     }
     /* USER CODE BEGIN I2C2_Init 2 */
@@ -547,11 +568,12 @@ static void MX_I2C2_Init(void) {
 }
 
 /**
- * @brief SPI2 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_SPI2_Init(void) {
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
 
     /* USER CODE BEGIN SPI2_Init 0 */
 
@@ -573,7 +595,8 @@ static void MX_SPI2_Init(void) {
     hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
     hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
     hspi2.Init.CRCPolynomial = 10;
-    if (HAL_SPI_Init(&hspi2) != HAL_OK) {
+    if (HAL_SPI_Init(&hspi2) != HAL_OK)
+    {
         Error_Handler();
     }
     /* USER CODE BEGIN SPI2_Init 2 */
@@ -583,11 +606,12 @@ static void MX_SPI2_Init(void) {
 }
 
 /**
- * @brief TIM1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM1_Init(void) {
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
 
     /* USER CODE BEGIN TIM1_Init 0 */
 
@@ -608,20 +632,24 @@ static void MX_TIM1_Init(void) {
     htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim1.Init.RepetitionCounter = 0;
     htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    if (HAL_TIM_Base_Init(&htim1) != HAL_OK) {
+    if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+    {
         Error_Handler();
     }
-    if (HAL_TIM_PWM_Init(&htim1) != HAL_OK) {
+    if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+    {
         Error_Handler();
     }
     sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
     sSlaveConfig.InputTrigger = TIM_TS_ITR3;
-    if (HAL_TIM_SlaveConfigSynchro(&htim1, &sSlaveConfig) != HAL_OK) {
+    if (HAL_TIM_SlaveConfigSynchro(&htim1, &sSlaveConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     sMasterConfig.MasterOutputTrigger = TIM_TRGO_OC2REF;
     sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     sConfigOC.OCMode = TIM_OCMODE_PWM1;
@@ -631,23 +659,27 @@ static void MX_TIM1_Init(void) {
     sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
     sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
     sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_1);
     sConfigOC.OCMode = TIM_OCMODE_PWM2;
     sConfigOC.Pulse = 88;
-    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_2);
     sConfigOC.OCMode = TIM_OCMODE_PWM1;
-    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_3);
     sConfigOC.Pulse = 888;
-    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_4);
@@ -658,7 +690,8 @@ static void MX_TIM1_Init(void) {
     sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
     sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
     sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-    if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK) {
+    if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     /* USER CODE BEGIN TIM1_Init 2 */
@@ -669,11 +702,12 @@ static void MX_TIM1_Init(void) {
 }
 
 /**
- * @brief TIM3 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM3_Init(void) {
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
 
     /* USER CODE BEGIN TIM3_Init 0 */
 
@@ -692,37 +726,44 @@ static void MX_TIM3_Init(void) {
     htim3.Init.Period = 627;
     htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    if (HAL_TIM_Base_Init(&htim3) != HAL_OK) {
+    if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+    {
         Error_Handler();
     }
-    if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) {
+    if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+    {
         Error_Handler();
     }
     sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
     sSlaveConfig.InputTrigger = TIM_TS_ITR0;
-    if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK) {
+    if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
     sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     sConfigOC.OCMode = TIM_OCMODE_PWM1;
     sConfigOC.Pulse = 624;
     sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
     sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-    if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_1);
     sConfigOC.Pulse = 23;
-    if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_2);
     sConfigOC.Pulse = 623;
-    if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+    {
         Error_Handler();
     }
     __HAL_TIM_DISABLE_OCxPRELOAD(&htim3, TIM_CHANNEL_3);
@@ -734,11 +775,12 @@ static void MX_TIM3_Init(void) {
 }
 
 /**
- * @brief TIM4 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM4_Init(void) {
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
 
     /* USER CODE BEGIN TIM4_Init 0 */
 
@@ -756,16 +798,19 @@ static void MX_TIM4_Init(void) {
     htim4.Init.Period = 2;
     htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    if (HAL_TIM_Base_Init(&htim4) != HAL_OK) {
+    if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+    {
         Error_Handler();
     }
     sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-    if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK) {
+    if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
     sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+    {
         Error_Handler();
     }
     /* USER CODE BEGIN TIM4_Init 2 */
@@ -775,11 +820,12 @@ static void MX_TIM4_Init(void) {
 }
 
 /**
- * @brief UART4 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_UART4_Init(void) {
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
 
     /* USER CODE BEGIN UART4_Init 0 */
 
@@ -796,7 +842,8 @@ static void MX_UART4_Init(void) {
     huart4.Init.Mode = UART_MODE_TX_RX;
     huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
     huart4.Init.OverSampling = UART_OVERSAMPLING_16;
-    if (HAL_UART_Init(&huart4) != HAL_OK) {
+    if (HAL_UART_Init(&huart4) != HAL_OK)
+    {
         Error_Handler();
     }
     /* USER CODE BEGIN UART4_Init 2 */
@@ -806,9 +853,10 @@ static void MX_UART4_Init(void) {
 }
 
 /**
- * Enable DMA controller clock
- */
-static void MX_DMA_Init(void) {
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
 
     /* DMA controller clock enable */
     __HAL_RCC_DMA2_CLK_ENABLE();
@@ -821,11 +869,12 @@ static void MX_DMA_Init(void) {
 }
 
 /**
- * @brief GPIO Initialization Function
- * @param None
- * @retval None
- */
-static void MX_GPIO_Init(void) {
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
     GPIO_InitTypeDef GPIO_InitStruct = { 0 };
 
     /* GPIO Ports Clock Enable */
@@ -837,7 +886,8 @@ static void MX_GPIO_Init(void) {
     __HAL_RCC_GPIOD_CLK_ENABLE();
 
     /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_0 | GPIO_PIN_1, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5
+        | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_0 | GPIO_PIN_1, GPIO_PIN_RESET);
 
     /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(SPI2_PWR_GPIO_Port, SPI2_PWR_Pin, GPIO_PIN_RESET);
@@ -849,8 +899,9 @@ static void MX_GPIO_Init(void) {
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
 
     /*Configure GPIO pins : PE2 PE3 PE4 PE5
-     PE6 PE7 PE0 PE1 */
-    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_0 | GPIO_PIN_1;
+                             PE6 PE7 PE0 PE1 */
+    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5
+        | GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_0 | GPIO_PIN_1;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -979,7 +1030,8 @@ bool IsVGAStillConnected() {
  * @retval None
  */
  /* USER CODE END Header_ConnecToVGATask */
-void ConnecToVGATask(void* argument) {
+void ConnecToVGATask(void* argument)
+{
     /* USER CODE BEGIN 5 */
     bool waitbeforeNextConnection = false;
     /* Infinite loop */
@@ -1087,14 +1139,15 @@ void ConnecToVGATask(void* argument) {
  * @retval None
  */
  /* USER CODE END Header_MainTask */
-void MainTask(void* argument) {
+void MainTask(void* argument)
+{
     /* USER CODE BEGIN MainTask */
 
-    // Main loop description
-    // Once the VGA screen is attached, our main application logic can kick-in
-    // First we need to recall that interrupts (both from peripherals or software) and device interactions
-    // lock the BusMatrix, introducing latencies (and consequently, artifacts) on the displayed image; so
-    // we need to pay attention to minimize the interactions with the peripherals
+        // Main loop description
+        // Once the VGA screen is attached, our main application logic can kick-in
+        // First we need to recall that interrupts (both from peripherals or software) and device interactions
+        // lock the BusMatrix, introducing latencies (and consequently, artifacts) on the displayed image; so
+        // we need to pay attention to minimize the interactions with the peripherals
     while (1) {
 
         // 1) Step: handle user input if available
@@ -1141,7 +1194,8 @@ void MainTask(void* argument) {
  * @param  htim : TIM handle
  * @retval None
  */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
     /* USER CODE BEGIN Callback 0 */
 
     /* USER CODE END Callback 0 */
@@ -1154,12 +1208,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
 }
 
 /**
- * @brief  This function is executed in case of error occurrence.
- * @retval None
- */
-void Error_Handler(void) {
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
     /* USER CODE BEGIN Error_Handler_Debug */
-    /* User can add his own implementation to report the HAL error return state */
+        /* User can add his own implementation to report the HAL error return state */
     __disable_irq();
 
     CLEAR_BIT(GPIOD->ODR, (GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_15));
@@ -1180,9 +1235,9 @@ void Error_Handler(void) {
 void assert_failed(uint8_t* file, uint32_t line)
 {
     /* USER CODE BEGIN 6 */
-                              /* User can add his own implementation to report the file name and line number,
-                               ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-                               /* USER CODE END 6 */
+                                  /* User can add his own implementation to report the file name and line number,
+                                   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+                                   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 

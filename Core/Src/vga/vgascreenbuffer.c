@@ -250,8 +250,8 @@ void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
      // bus matrix contention
      // So there is only one thing for it: even if there are more data to be transferred, we stop the DMA and (if necessary) force the output to low
      // so that the black calibration of the monitor can still do its work
-    Bpp8State* bpp3State = &screenBuffer->displayState.Bpp8;
-    DMA_Stream_TypeDef* dmaStream = bpp3State->screenLineDMAStream;
+    Bpp8State* bpp8State = &screenBuffer->displayState.Bpp8;
+    DMA_Stream_TypeDef* dmaStream = bpp8State->screenLineDMAStream;
     DisableLineDMA(dmaStream);
 
     //DebugWriteChar('E');
@@ -261,7 +261,7 @@ void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
     __HAL_TIM_DISABLE_DMA(screenBuffer->hSyncClockTimer, TIM_DMA_TRIGGER);
 
     /* Check for error condition */
-    UInt32 lisr = bpp3State->screenLineDMAController->LISR;
+    UInt32 lisr = bpp8State->screenLineDMAController->LISR;
 
     // TODO Calculate this based on stream number
     UInt32 streamDirectModeErrorFlag = DMA_LISR_DMEIF0;
@@ -287,21 +287,21 @@ void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
 
      /* Preparation of a new DMA request */
      // We clear all the Complete|Half Trasfer completed flags
-    SET_BIT(bpp3State->screenLineDMAController->LIFCR, screenBuffer->dmaClearFlags);
+    SET_BIT(bpp8State->screenLineDMAController->LIFCR, screenBuffer->dmaClearFlags);
 
     // Line pixels freq scaling
     if ((++screenBuffer->linePrescalerCnt) == screenBuffer->linePrescaler) {
-        bpp3State->currentLineOffset += bpp3State->linePixels;
+        bpp8State->currentLineOffset += bpp8State->linePixels;
         screenBuffer->linePrescalerCnt = 0;
     }
 
     // Data items to transfer are always the lines pixels
     // In Mem2Per mode the "items" width are relative to the width of the "peripheral" bus (RM0090 - Section 10.3.10)
-    dmaStream->NDTR = bpp3State->linePixels;
+    dmaStream->NDTR = bpp8State->linePixels;
     // Source memory address is simply buffer start + current line offset
-    dmaStream->M0AR = ((UInt32)screenBuffer->BufferPtr) + ((UInt32)bpp3State->currentLineOffset);
+    dmaStream->M0AR = ((UInt32)screenBuffer->BufferPtr) + ((UInt32)bpp8State->currentLineOffset);
 
-    if (bpp3State->currentLineOffset < screenBuffer->bufferSize && 
+    if (bpp8State->currentLineOffset < screenBuffer->bufferSize && 
         screenBuffer->outputState == VgaOutputActive) {
         // If the buffer is within the limits, we enable the dma stream
         // This will only preload the data in the FIFO (at least in Mem2Per mode) [AN4031- Section 2.2.2]
@@ -918,12 +918,22 @@ VgaError VgaStartOutput() {
     if (screenBuf->base.bitsPerPixel == Bpp8) {
         Bpp8State* bpp8State = &screenBuf->displayState.Bpp8;
         // Before starting we clear all the flags in case a previous transfer was completed/cancelled
+
+        // We clear the previously selected threshold level and we set the new one
+        // Note on the fifo levels:
+        // DMA_FIFO_THRESHOLD_3QUARTERSFULL: Timing of the rendered image seems to be ok but the end border is larger
+        // DMA_FIFO_THRESHOLD_FULL: Rendered image seems to be little stretched (end border is out of screen) but the
+        // border is not much larger
+        CLEAR_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
+        SET_BIT(bpp8State->screenLineDMAStream->FCR, DMA_FIFO_THRESHOLD_3QUARTERSFULL);
+
         SET_BIT(bpp8State->screenLineDMAController->LIFCR, screenBuf->dmaClearFlags);
         SET_BIT(bpp8State->screenLineDMAStream->CR, DMA_SxCR_EN);
 
-        UInt32 thresholdSelected = READ_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
-        UInt32 fifoStatusToReach;
+        // We always wait to reach the max level
+        UInt32 fifoStatusToReach = DMA_SxFCR_FS_2 | DMA_SxFCR_FS_0; // Full;
 
+        /*UInt32 thresholdSelected = READ_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
         switch (thresholdSelected) {
         case DMA_FIFO_THRESHOLD_1QUARTERFULL:
             fifoStatusToReach = DMA_SxFCR_FS_0; // 1/4 <= Level < 1/2
@@ -940,7 +950,7 @@ VgaError VgaStartOutput() {
         default:
             Error_Handler();
             break;
-        }
+        }*/
 
         // Let's just wait the FIFO is effectively filled
         // NB: Didn't find anything in the documentation that states that this operation is necessary  but let's keep it anyway
