@@ -31,6 +31,7 @@ static FILINFO _fileListSelectedFile;
 
 static BOOL _displayingError;
 const char* const FsRootDirectory = "";
+static int _titleBoxHeight;
 
 /// Flag that indicate that the output must be suspended when drawing an image
 BOOL _suspendOutput = 0;
@@ -40,17 +41,18 @@ char _errorFormatBuffer[FORMAT_BUFFER_SIZE];
 /* Forward declaration section */
 
 /// Display the "SD mounting message" on the screen
-void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt32 background);
+static void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt32 background);
 /// Display a FatFS error on the screen together with the specified description
-void DisplayFResultError(const ScreenBuffer* screenBuffer, FRESULT result, const char* description);
+static void DisplayFResultError(const ScreenBuffer* screenBuffer, FRESULT result, const char* description);
 /// Display a generic error on the screen with the specified description
-void DisplayGenericError(const ScreenBuffer* screenBuffer, const char* description);
+static void DisplayGenericError(const ScreenBuffer* screenBuffer, const char* description);
 /// Draws on the screen the selected file
-void DrawSelectedFile();
+static void DrawSelectedFile();
 /// Draws on the screen the selected BMP file
-void DrawSelectedBmpFile();
+static void DrawSelectedBmpFile();
 /// Draws on the screen the selected RAW file
-void DrawSelectedRawFile();
+static void DrawSelectedRawFile();
+static void DrawApplicationTitle();
 
 /* Private section */
 
@@ -227,6 +229,31 @@ void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt3
     ScreenDrawString(screenBuffer, message, point, &pen);
 }
 
+void DrawApplicationTitle() {
+    const char* title = "Explorer";
+    const int padding = 3;
+
+    SizeS titleStrBox = { 0 };
+    ScreenMeasureString(title, &titleStrBox);
+
+    _titleBoxHeight = titleStrBox.height + (padding * 2);
+    SizeS titleBox = titleStrBox;
+    titleBox.height = (Int16)_titleBoxHeight;
+    titleBox.width = _screenBuffer->screenSize.width;
+
+    Pen pen = { 0 };
+    pen.color.argb = SCREEN_RGB(0x53, 0x6D, 0xFE);
+
+    PointS point = { 0 };
+    ScreenFillRectangle(_screenBuffer, point, titleBox, &pen);
+
+    point.x = (Int16)((_screenBuffer->screenSize.width / 2) - (titleStrBox.width / 2));
+    point.y = (Int16)padding;
+
+    pen.color.argb = SCREEN_RGB(0xFF, 0xFF, 0xFF);
+    ScreenDrawString(_screenBuffer, title, point, &pen);
+}
+
 void DrawSelectedFile() {
     if (EndsWith(_fileListSelectedFile.fname, ".raw")) {
         DrawSelectedRawFile();
@@ -311,6 +338,8 @@ void DrawFileList() {
     pen.color.argb = SCREEN_RGB(0, 0, 0);
     ScreenClear(_screenBuffer, &pen);
 
+    DrawApplicationTitle();
+
     // Performance note here: it is not the best here to scan the directory each time
     // but our focus is now on reading "data" from SD and displaying stuff on the VGA
     // We have to enumerate a little list of file, not thousand files directories so we
@@ -328,6 +357,7 @@ void DrawFileList() {
 
     PointS rowPoint = { 0 };
     rowPoint.x = (Int16)(rowPoint.x + rowPadding); // let's start with a little offset to not draw directly on the border
+    rowPoint.y = (Int16)(_titleBoxHeight + rowPadding);
 
     // Little performance note: to check if the enumeration is ended, we need to check if fname is not an empty string
     // If we use strlen(), the string is read entirely each time. We can simply check if the first char is not zero

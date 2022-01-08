@@ -925,7 +925,7 @@ VgaError VgaStartOutput() {
         // DMA_FIFO_THRESHOLD_FULL: Rendered image seems to be little stretched (end border is out of screen) but the
         // border is not much larger
         CLEAR_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
-        SET_BIT(bpp8State->screenLineDMAStream->FCR, DMA_FIFO_THRESHOLD_3QUARTERSFULL);
+        SET_BIT(bpp8State->screenLineDMAStream->FCR, DMA_FIFO_THRESHOLD_FULL);
 
         SET_BIT(bpp8State->screenLineDMAController->LIFCR, screenBuf->dmaClearFlags);
         SET_BIT(bpp8State->screenLineDMAStream->CR, DMA_SxCR_EN);

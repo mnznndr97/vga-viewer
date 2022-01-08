@@ -121,6 +121,13 @@ static UInt32 _vgaCheckLastTick = 0;
 
 static MainApplicationRunning _currentRunningApp = AppIdle;
 
+static const char* _homeMessages[] = {
+        "VGAViewer 0.22.108.1",
+        "a - ASCII Table",
+        "e - Explorer",
+        "p - Palette"
+};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -145,6 +152,8 @@ static void IssueUserInputReadWithIT();
 static bool IsVGAStillConnected();
 
 static void DrawMainScreen();
+static void DrawMainScreenBorder();
+static void DrawMainScreenTitle();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -294,7 +303,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
     }
 }
 
-static void DrawMainScreen() {
+void DrawMainScreen() {
+    DrawMainScreenBorder();
+    DrawMainScreenTitle();
+}
+
+void DrawMainScreenBorder() {
     PointS point = { 0 };
     Pen pen = { 0 };
 
@@ -323,6 +337,39 @@ static void DrawMainScreen() {
 
         point.x = (Int16)(_screenBuffer->screenSize.width - 1);
         _screenBuffer->DrawCallback(point, &pen);
+    }
+}
+
+void DrawMainScreenTitle() {
+    int titleHeight = 0;
+    const int padding = 1;
+    const int messages = 4;
+    for (int i = 0; i < messages; i++)
+    {
+        SizeS strSize = { 0 };
+        ScreenMeasureString(_homeMessages[i], &strSize);
+
+        titleHeight += strSize.height + padding;
+    }
+    titleHeight -= padding;
+
+    int startingY = (_screenBuffer->screenSize.height / 2) - (titleHeight / 2);
+
+    Pen pen = { 0 };
+    pen.color.argb = SCREEN_RGB(0, 0xe6, 0x76);
+
+    PointS drawingPoint = { 0 };
+    drawingPoint.y = (Int16)startingY;
+    for (int i = 0; i < messages; i++)
+    {
+        SizeS strSize = { 0 };
+
+        ScreenMeasureString(_homeMessages[i], &strSize);
+        int startingX = (_screenBuffer->screenSize.width / 2) - (strSize.width / 2);
+        drawingPoint.x = (Int16)startingX;
+
+        ScreenDrawString(_screenBuffer, _homeMessages[i], drawingPoint, &pen);
+        drawingPoint.y = (Int16)(drawingPoint.y + padding + strSize.height);
     }
 }
 
@@ -379,7 +426,7 @@ int main(void)
 
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 
-    printf("\033[0;0H\033[2J\033[0mStarting VGA Viewer 0.21.1224.1");
+    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.108.1");
 #ifdef _DEBUG
     printf(" - Debug Version");
 #endif
@@ -955,10 +1002,7 @@ void HandleUserInput() {
             ExplorerClose();
         }
         _currentRunningApp = AppIdle;
-
-        Pen currentPen = { 0 };
-        currentPen.color.argb = 0xff000000;
-        ScreenClear(_screenBuffer, &currentPen);
+        DrawMainScreen();
     }
     else if (_currentRunningApp != AppIdle) {
         switch (_currentRunningApp) {
@@ -1016,7 +1060,7 @@ bool IsVGAStillConnected() {
     _vgaCheckLastTick = currentHalTick;
 
     // Time to check if the VGA is still connected. There is no "standard" input signal on the VGA so we backoff to our VGA I2C connection
-    // If the Edid slave address is not available, the cable is probably disconnected (or the monitor is completly switched off)
+    // If the Edid slave address is not available, the cable is probably disconnected (or the monitor is completely switched off)
 
     HAL_StatusTypeDef deviceAliveResult = HAL_I2C_IsDeviceReady(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, I2CVGA_CHECK_RETRIES, I2CVGA_CHECK_TIMEOUT);
     return deviceAliveResult == HAL_OK;
@@ -1167,22 +1211,6 @@ void MainTask(void* argument)
             CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
         }
     }
-
-    /*if (status == HAL_OK) {
-     // We received a command from the user
-     int a = 0;
-     } else if ((status = HAL_I2C_IsDeviceReady(&hi2c2, EDID_DDC2_I2C_DEVICE_ADDRESS << 1, 2, 250)) == HAL_OK) {
-     // Device still connected, nothing to do
-     } else {
-     printf("\033[1;91mVGA Disconnected!\033[0m\r\n");
-     // If monitor is detached, we can wait a little more before trying reconnecting
-     osDelay(5000);
-     CHECK_OS_STATUS(osThreadResume(vgaConnectionTaHandle));
-     CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
-     }
-
-     }*/
-
      /* USER CODE END MainTask */
 }
 
