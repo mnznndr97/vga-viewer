@@ -11,6 +11,8 @@
 
 extern void Error_Handler();
 
+
+// #define SD_PROFILE
 #define SD_DUMMY_BYTE 0xFF
 #define SD_MIN_FREQ 100000
 
@@ -157,9 +159,11 @@ static UInt16 _powerPin = 0;
 
 static GPIO_TypeDef* _nssGPIO = NULL;
 static UInt16 _nssPin = 0;
-static SPI_HandleTypeDef* _spiHandle = NULL;
 
-/// Static allocated buffer wherethe response will be read
+static SPI_HandleTypeDef* _spiHandle = NULL;
+static SPI_TypeDef* _spiInstance = NULL;
+
+/// Static allocated buffer where the response will be read
 static BYTE _responseBuffer[SD_MAX_RESPONSE_SIZE];
 
 /// Static allocated buffer where a data block will be read togheter with the related crc
@@ -217,33 +221,36 @@ static void DeselectCard() {
 
 static BYTE PerformByteTransaction(BYTE data) {
     // We write the byte into the data register. This will clear the TXE flag [RM0090 - Section 28.3.7]
-    _spiHandle->Instance->DR = data;
 
+	// NB: By looking at the release assembly of the function, _spiHandle->Instance in not always
+	// cached in a register. To help the compiler let's directly access the _spiInstance to
+	// avoid a useless memory dereference
+	_spiInstance->DR = data;
     UInt32 srRegister = 0;
-    UInt32 spiStatusMsk = SPI_SR_TXE_Msk | SPI_SR_RXNE_Msk;
 
-    UInt32 supportedErrorMsk = SPI_SR_MODF_Msk | SPI_SR_OVR_Msk;
+    const UInt32 spiStatusMsk = SPI_SR_TXE_Msk | SPI_SR_RXNE_Msk;
+    const UInt32 supportedErrorMsk = SPI_SR_MODF_Msk | SPI_SR_OVR_Msk |
+            // We should never get a FrameFormat error since is not used in standard SPI mode
+    		SPI_SR_FRE_Msk |
+			// We should never get a CRC error since it should not be enabled
+			SPI_SR_CRCERR_Msk |
+			// We should never get an underrun error since is should not be used in SPI mode
+			SPI_SR_UDR_Msk;
     do {
-        srRegister = _spiHandle->Instance->SR;
+        srRegister = _spiInstance->SR;
 
-        // We should never get a FrameFormat error since is not used in standard SPI mode
-        if ((srRegister & SPI_SR_FRE_Msk) != 0)
-            Error_Handler();
-        // We should never get a CRC error since it should not be enabled
-        if ((srRegister & SPI_SR_CRCERR_Msk) != 0)
-            Error_Handler();
-        // We should never get an underrun error since is should not be used in SPI mode
-        if ((srRegister & SPI_SR_UDR_Msk) != 0)
-            Error_Handler();
-
+#ifndef SD_PROFILE
+        // Let's not check for errors when profiling just to have the measure as "unbiased"
+        // as possible
         if ((srRegister & supportedErrorMsk) != 0) {
             // How to handle this situation?
             Error_Handler();
         }
+#endif
     } while ((srRegister & spiStatusMsk) != spiStatusMsk);
 
     // We read the byte from the data register. This will clear the RXNE flag [RM0090 - Section 28.3.7]
-    return (BYTE)_spiHandle->Instance->DR;
+    return (BYTE)_spiInstance->DR;
 }
 
 static BYTE ReadByte() {
@@ -530,14 +537,24 @@ static SdStatus ReadDataBlock(BYTE* destination, UInt16 blockSize) {
         return SdStatusCommunicationTimeout;
     }
 
+#ifdef SD_PROFILE
+    DebugWriteChar('b');
+#endif
+
     UInt16 crc = CRC16_ZERO;
-    /* We read our data bloxk into the destination buffer*/
+    /* We read our data block into the destination buffer*/
     for (int i = 0; i < blockSize; i++) {
         BYTE data = ReadByte();
+#ifndef SD_PROFILE
         crc = Crc16Add(crc, data);
+#endif
         destination[i] = data;
     }
 
+#ifdef SD_PROFILE
+    DebugWriteChar('B');
+    // We don't care for crc when compiling
+#else
     /* Eventually we received the last bytes of CRC */
     for (int i = 0; i < SD_DATA_CRC_SIZE; i++) {
         BYTE data = ReadByte();
@@ -548,6 +565,8 @@ static SdStatus ReadDataBlock(BYTE* destination, UInt16 blockSize) {
     if (crc != 0) {
         return SdStatusReadCorrupted;
     }
+#endif
+
     return SdStatusOk;
 }
 
@@ -638,6 +657,7 @@ SdStatus SdInitialize(GPIO_TypeDef* powerGPIO, UInt16 powerPin, SPI_HandleTypeDe
     _nssPin = GPIO_PIN_12;
 
     _spiHandle = spiHandle;
+    _spiInstance = spiHandle->Instance;
 
     // SPI assertion (follows initialization order defined in Chapter 28.3.3 of RM0090)
 
