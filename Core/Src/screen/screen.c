@@ -156,7 +156,8 @@ void ScreenFillRectangle(const ScreenBuffer* buffer, PointS point, SizeS size, c
     BYTE packSize = (BYTE)(1 << packSizePower);
 
     // We do the check here to limit the number of branch instruction in the code
-    DebugWriteChar('s');
+    DebugWriteChar('d');
+
     if (packSize == 1) {
         // No packed draw available. We draw pixel by pixel
         PointS point;
@@ -205,7 +206,7 @@ void ScreenFillRectangle(const ScreenBuffer* buffer, PointS point, SizeS size, c
             }
         }
     }
-    DebugWriteChar('e');
+    DebugWriteChar('D');
 }
 
 UInt16 ScreenGetCharMaxHeight() {
