@@ -110,19 +110,23 @@ const osEventFlagsAttr_t _vgaEDIDRcvEvnt_attributes = {
 };
 /* USER CODE BEGIN PV */
 
+/// Static 128bytes space for our screen edid
 static Edid _vgaEDID = { 0 };
+/// Current active FrameBuffer
 static ScreenBuffer* _screenBuffer = NULL;
+/// VGA informations that will be used to create the framebuffer
 static VgaVisualizationInfo _visualizationInfos = { 0 };
-
+/// Command byte received via UART interrupt
 static uint8_t _userCommand = 0;
+/// Flag that indicates that a command arrived via UART interrupt
 static volatile uint8_t _userCommandReceivedFlag = 0;
-
+/// VGA Timer ticks for the connections check interval
 static UInt32 _vgaCheckLastTick = 0;
-
+/// Indicates which application is currently running
 static MainApplicationRunning _currentRunningApp = AppIdle;
-
+/// Home messages lines that will be displayed
 static const char* _homeMessages[] = {
-        "VGAViewer 0.22.108.1",
+        "VGAViewer 0.22.113.1",
         "a - ASCII Table",
         "e - Explorer",
         "p - Palette"
@@ -163,16 +167,13 @@ int __io_putchar(int ch) {
     // The __io_putchar migth in a "deep" position in the stack due to libs function calls
     // (at least in Debug mode where inlining is not aggressive)
     // To be absolutely secure, let's check that at least in this level we have enough space in the stack
-    // This can be done only when the kernel in running
+    // This can be done only when the kernel in running 
     osKernelState_t state = osKernelGetState();
     if (state == osKernelRunning) {
         osExEnforeStackProtection(NULL);
     }
 
-    /*DebugWriteChar(ch);
-     return 0;*/
-
-     // This call is blocking with infinite timeout so in general we should not have errors
+    // This call is blocking with infinite timeout so in general we should not have errors
     HAL_StatusTypeDef result = HAL_UART_Transmit(&huart4, (unsigned char*)&ch, 1, HAL_MAX_DELAY);
     if (result != HAL_OK) {
         // Let's just signal with a LED that something has gone wrong
@@ -181,26 +182,6 @@ int __io_putchar(int ch) {
 
     // No documentation on the return value (it is also not used by the default _write function in syscalls.c
     return 0;
-}
-
-void FormatSec(float time) {
-    static const char* suffix[] = { "sec", "ms", "us", "ns" };
-    const int suffixLength = 3; // We should never get to ns
-
-    int i;
-    for (i = 0; i < suffixLength - 1 && time > 0.0f && time < 1.0f; i++) {
-        time *= 1000.0f;
-    }
-
-    printf("%.2f %s", time, suffix[i]);
-}
-
-void OnDMAError(DMA_HandleTypeDef* dma) {
-    printf("Error\r\n");
-}
-
-void OnDMACplt(DMA_HandleTypeDef* dma) {
-    printf("Cplt\r\n");
 }
 
 void HandleI2CError(I2C_HandleTypeDef* hi2c) {
@@ -238,15 +219,18 @@ void HandleI2CError(I2C_HandleTypeDef* hi2c) {
 void TIM7_IRQHandler(void) {
     /* Custom main system timer implementation */
     // With this implementation we can lower the time incidence of the HAL abstraction
-    // layer for a function that is incrmenting a single value
+    // layer for a function that is incrementing a single value
+    // This MUST be done to reduce the BusMatrix delay
     UInt32 timStatus = TIM7->SR;
-    UInt32 updateIRQ = READ_BIT(timStatus, TIM_FLAG_UPDATE);
-    CLEAR_BIT(TIM7->SR, updateIRQ);
+    CLEAR_BIT(TIM7->SR, TIM_FLAG_UPDATE);
 
+#if _DEBUG
+    // Let's just check in debug to be sure we are doing everything right
     if ((timStatus & ~TIM_FLAG_UPDATE) != 0) {
         // Main tick timer has raised an interrupt that was not intended to be handled
         Error_Handler();
     }
+#endif
 
     HAL_IncTick();
 }
@@ -254,7 +238,7 @@ void TIM7_IRQHandler(void) {
 void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef* hi2c) {
     // The vgaConnectionTaHandle is the only task that should enable this interrupt
     // If the task stack overflows, there is the risk that some OS structures (_vgaEDIDRcvEvntHandle)
-    // can be corruptes so better add a check to lower the possibility that this event occurs
+    // can be corrupted so better add a check to lower the possibility that this event occurs
     // NB: StackOverflow can happen during another IRQ_Handler. Here we are just "asserting" that everything ok
     // otherwhise osEventFlagsSet may fail
     osExEnforeStackProtection(vgaConnectionTaHandle);
@@ -298,6 +282,9 @@ void HAL_I2C_AbortCpltCallback(I2C_HandleTypeDef* hi2c) {
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
     if (huart == &huart4) {
+        // Simply store the received command and set the flag
+        // This will result ina little delay for the BusMatrix, but still better result than
+        // polling the peripheral
         _userCommand = (BYTE)huart->Instance->DR;
         _userCommandReceivedFlag = 1;
     }
@@ -306,15 +293,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
 void DrawMainScreen() {
     DrawMainScreenBorder();
     DrawMainScreenTitle();
+
+    /*Pen pen = { 0 };
+
+    pen.color.argb = SCREEN_RGB(0, 0, 0);
+    ScreenClear(_screenBuffer, &pen);*/
 }
 
 void DrawMainScreenBorder() {
+    // We draw a red line on the screen borders to see how precise we are
+    // in our timing
     PointS point = { 0 };
     Pen pen = { 0 };
 
     pen.color.argb = SCREEN_RGB(0, 0, 0);
     ScreenClear(_screenBuffer, &pen);
 
+    // Top line drawing
     pen.color.argb = SCREEN_RGB(0xFF, 0, 0);
     for (int i = 0; i < _screenBuffer->screenSize.width; i++)
     {
@@ -322,6 +317,7 @@ void DrawMainScreenBorder() {
         _screenBuffer->DrawCallback(point, &pen);
     }
 
+    // Bottom line drawing
     point.y = (Int16)(_screenBuffer->screenSize.height - 1);
     for (int i = 0; i < _screenBuffer->screenSize.width; i++)
     {
@@ -329,6 +325,7 @@ void DrawMainScreenBorder() {
         _screenBuffer->DrawCallback(point, &pen);
     }
 
+    // Lateral lines drawing
     for (int i = 0; i < _screenBuffer->screenSize.height; i++)
     {
         point.y = (Int16)(i);
@@ -383,14 +380,17 @@ int main(void)
 {
     /* USER CODE BEGIN 1 */
 
-        // We enable the Data Watchpoint Trigger cycles counter
-        // DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-        // We need to disable the io buffering to have the data directly sent
+    // We need to disable the io buffering to have the data directly sent
     setvbuf(stdout, NULL, _IONBF, 0);
     Crc7Initialize();
     Crc16Initialize();
 
+    // We set to stop our main screen timer during debug
+    // In this way we avoid strange conditions
     SET_BIT(DBGMCU->APB1FZ, DBGMCU_APB1_FZ_DBG_TIM4_STOP);
+    // We force the processor to raise an exception when unaligned word access occur
+    // We use this combined with a compiler option to force the generation of only word acceses
+    // if  aligned to try increse the performances (unaligned word loads are slower that normal bytes load)
     SET_BIT(SCB->CCR, SCB_CCR_UNALIGN_TRP_Msk);
 
     /* USER CODE END 1 */
@@ -426,7 +426,7 @@ int main(void)
 
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 
-    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.108.1");
+    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.113.1");
 #ifdef _DEBUG
     printf(" - Debug Version");
 #endif
@@ -991,7 +991,8 @@ void HandleUserInput() {
     _userCommandReceivedFlag = 0;
 
     IssueUserInputReadWithIT();
-    if (receivedCommand == '\033') {
+    if (receivedCommand == '\033') { 
+        // Escape command, we close the application
         if (_currentRunningApp == AppAsciiTable) {
             AsciiTableClose();
         }
@@ -1014,6 +1015,8 @@ void HandleUserInput() {
             break;
         case AppExplorer:
             ExplorerProcessInput(receivedCommand);
+            break;
+        default:
             break;
         }
     }
@@ -1211,7 +1214,7 @@ void MainTask(void* argument)
             CHECK_OS_STATUS(osThreadSuspend(_mainTaskHandle));
         }
     }
-     /* USER CODE END MainTask */
+    /* USER CODE END MainTask */
 }
 
 /**
