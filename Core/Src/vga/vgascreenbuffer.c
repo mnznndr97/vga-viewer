@@ -9,7 +9,7 @@
 #ifdef _DEBUG
 #define DRAWPIXELASSERT
 
- // #define DEBUGWRITE
+// #define DEBUGWRITE
 #endif // _DEBUG
 
 extern void Error_Handler();
@@ -28,7 +28,7 @@ static VgaError CorrectVideoFrameTimings(const VgaVisualizationInfo* info, VgaVi
 /// \brief Draw a single pixel in the buffer using the speficied color in 3 bits per pixels mode
 /// \param pixelPtr Screen buffer pointer
 /// \param color Pixel color
-static void Draw3bppPixelImpl(BYTE* pixelPtr, ARGB8Color color);
+static void Draw8bppPixelWithAlpha(BYTE* pixelPtr, ARGB8Color color);
 /// \brief Draw a single pixel in the specified point using the speficied pen
 /// \param pixel Pixel location
 /// \param pen Pixel pen
@@ -301,7 +301,7 @@ void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
     // Source memory address is simply buffer start + current line offset
     dmaStream->M0AR = ((UInt32)screenBuffer->BufferPtr) + ((UInt32)bpp8State->currentLineOffset);
 
-    if (bpp8State->currentLineOffset < screenBuffer->bufferSize && 
+    if (bpp8State->currentLineOffset < screenBuffer->bufferSize &&
         screenBuffer->outputState == VgaOutputActive) {
         // If the buffer is within the limits, we enable the dma stream
         // This will only preload the data in the FIFO (at least in Mem2Per mode) [AN4031- Section 2.2.2]
@@ -434,41 +434,37 @@ VgaError CorrectVideoFrameTimings(const VgaVisualizationInfo* info, VgaVideoFram
     return VgaErrorNone;
 }
 
-void Draw3bppPixelImpl(BYTE* pixelPtr, ARGB8Color color) {
+void Draw8bppPixelWithAlpha(BYTE* pixelPtr, ARGB8Color color) {
     // Super simple implementations: we read our color components, correct them
-    // with the alpha if necessary and then we map to the 8bit pointer
+    // with the alpha and then we map back into the 8bit color
 
     BYTE r = color.components.R;
     BYTE g = color.components.G;
     BYTE b = color.components.B;
 
-    // We apply alpha correction only if necessary
-    // In this way we can avoid floating point operations when
-    // possible
-    if (color.components.A != 0xFF) {
-        int currentPixelColor = ((int)(*pixelPtr)) & 0xFF;
+    // We can avoid floating point operations by doing everything with integers
+    int currentPixelColor = ((int)(*pixelPtr)) & 0xFF;
 
-        float normalizedAlpha = color.components.A / 255.0f;
-        float normalizedBgAlpha = 1.0f - normalizedAlpha;
+    int alpha = color.components.A;
+    int bgAlpha = 255 - color.components.A;
 
-        float newRed = ((float)r) * normalizedAlpha;
-        float oldRed = ((float)MASKI2BYTE(currentPixelColor << 6)) * normalizedBgAlpha;
+    int newRed = r * alpha;
+    int oldRed = MASKI2BYTE(currentPixelColor << 6) * bgAlpha;
 
-        float newGreen = ((float)g) * normalizedAlpha;
-        float oldGreen = ((float)MASKI2BYTE((currentPixelColor & 0x1c) << 3)) * normalizedBgAlpha;
+    int newGreen = g * alpha;
+    int oldGreen = MASKI2BYTE((currentPixelColor & 0x1c) << 3) * bgAlpha;
 
-        float newBlue = ((float)b) * normalizedAlpha;
-        float oldBlue = ((float)MASKI2BYTE(currentPixelColor & 0xE0)) * normalizedBgAlpha;
+    int newBlue = b * alpha;
+    int oldBlue = MASKI2BYTE(currentPixelColor & 0xE0) * bgAlpha;
 
-        DebugAssert(newRed + oldRed <= 255.0f);
-        DebugAssert(newGreen + oldGreen <= 255.0f);
-        DebugAssert(newBlue + oldBlue <= 255.0f);
+    // Let's make sure we are doing nothing strange with out math
+    DebugAssert((newRed + oldRed) / 255 <= 255);
+    DebugAssert((newGreen + oldGreen) / 255 <= 255);
+    DebugAssert(((newBlue + oldBlue) / 255) <= 255);
 
-        r = (BYTE)(newRed + oldRed);
-        g = (BYTE)(newGreen + oldGreen);
-        b = (BYTE)(newBlue + oldBlue);
-    }
-
+    r = (BYTE)((newRed + oldRed) / 255);
+    g = (BYTE)((newGreen + oldGreen) / 255);
+    b = (BYTE)((newBlue + oldBlue) / 255);
     *pixelPtr = (BYTE)RGB_TO_8BPP(r, g, b);
 }
 
@@ -483,8 +479,31 @@ void DrawPixel(PointS pixel, const Pen* pen) {
 #endif // DRAWPIXELASSERT
 
     if (buffer->base.bitsPerPixel == Bpp8) {
-        BYTE* vgaBufferPtr = &buffer->BufferPtr[pixel.y * buffer->displayState.Bpp8.linePixels + pixel.x];
-        Draw3bppPixelImpl(vgaBufferPtr, pen->color);
+        int bufferOffset = pixel.y * buffer->displayState.Bpp8.linePixels + pixel.x;
+        BYTE* vgaBufferPtr = buffer->BufferPtr + bufferOffset;
+
+        // NB: The compiler will create a branch that jumps ahead if this condition.
+        /*
+        ... Preamble code
+         Verify condition
+         Jump to else
+         If code
+         ... ecc
+         */
+
+         // In this way we may help ART instruction prefetcher since most of the time we draw pixels
+         // that are opaque
+         // We also avoid another call by drawifn the opaque colors directly here
+        ARGB8Color color = pen->color;
+        if (color.components.A == 0xFF) {
+            BYTE r = color.components.R;
+            BYTE g = color.components.G;
+            BYTE b = color.components.B;
+            *vgaBufferPtr = (BYTE)RGB_TO_8BPP(r, g, b);
+        }
+        else {
+            Draw8bppPixelWithAlpha(vgaBufferPtr, color);
+        }
     }
 }
 
@@ -503,16 +522,7 @@ void DrawPixelPack(PointS pixel, const Pen* pen) {
     DebugAssert(((UInt32)pixelPtr & 0x03) == 0x0);
 
     ARGB8Color color = pen->color;
-    if (color.components.A != 0xFF) {
-        // If we are using alpha, the underling 4 background pixels can be different so we must fall back to a single
-        // draw call per pixel
-
-        Draw3bppPixelImpl(pixelPtr, color);
-        Draw3bppPixelImpl(pixelPtr + 1, color);
-        Draw3bppPixelImpl(pixelPtr + 2, color);
-        Draw3bppPixelImpl(pixelPtr + 3, color);
-    }
-    else {
+    if (color.components.A == 0xFF) {
         UInt32 pixelColor = (UInt32)RGB_TO_8BPP(color.components.R, color.components.G, color.components.B);
 
         // Can this be optimized with some strange arm instruction? I din't find anything in the MCU Programming manual [PM0214]
@@ -522,6 +532,15 @@ void DrawPixelPack(PointS pixel, const Pen* pen) {
         // Super simple word access and pixel pack store
         UInt32* wordPtr = ((UInt32*)pixelPtr);
         *wordPtr = wordPixelColor;
+    }
+    else {
+        // If we are using alpha, the underling 4 background pixels can be different so we must fall back to a single
+        // draw call per pixel
+
+        Draw8bppPixelWithAlpha(pixelPtr, color);
+        Draw8bppPixelWithAlpha(pixelPtr + 1, color);
+        Draw8bppPixelWithAlpha(pixelPtr + 2, color);
+        Draw8bppPixelWithAlpha(pixelPtr + 3, color);
     }
 }
 

@@ -6,7 +6,7 @@
  * The desired screen setup is specified via the VgaVisualizationInfo structure, passed as parameter to the function
  *
  * Frame timings are described by the VgaVideoFrameInfo structure
- * 
+ *
  *  Created on: Nov 1, 2021
  *      Author: Andrea Monzani [Mat 952817]
  */
