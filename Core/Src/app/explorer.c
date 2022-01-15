@@ -26,7 +26,8 @@ static Bmp _bmpHandle;
 
 static ScreenBuffer* _screenBuffer;
 
-static UInt32 _fileListSelectedRow = 0;
+static int _fileListCountCache = 0;
+static int _fileListSelectedRow = 0;
 static FILINFO _fileListSelectedFile;
 
 static BOOL _displayingError;
@@ -40,6 +41,8 @@ char _errorFormatBuffer[FORMAT_BUFFER_SIZE];
 
 /* Forward declaration section */
 
+/// Counts the valid file in our directory. Just to perform a check on the index
+static bool CacheFileCount();
 /// Display the "SD mounting message" on the screen
 static void DisplayMessage(const ScreenBuffer* screenBuffer, const char* message, UInt32 background);
 /// Display a FatFS error on the screen together with the specified description
@@ -53,8 +56,44 @@ static void DrawSelectedBmpFile();
 /// Draws on the screen the selected RAW file
 static void DrawSelectedRawFile();
 static void DrawApplicationTitle();
+/// Filter to check that a file in our list is valid
+/// @return False if the file need to be ignored, true otherwhise
+static bool FilterValidFile(const FILINFO* pInfo);
 
 /* Private section */
+
+bool CacheFileCount() {
+    _fileListCountCache = 0;
+    FRESULT openResult = f_opendir(&_dirHandle, FsRootDirectory);
+    if (openResult != FR_OK) {
+        DisplayFResultError(_screenBuffer, openResult, "Unable to open root dir");
+        return false;
+    }
+
+    // Little performance note: to check if the enumeration is ended, we need to check if fname is not an empty string
+    // If we use strlen(), the string is read entirely each time. We can simply check if the first char is not zero
+    FRESULT dirReadResult = FR_OK;
+    while (((dirReadResult = f_readdir(&_dirHandle, &_fileInfoHandle)) == FR_OK) && // No Error
+        _fileInfoHandle.fname[0] != '\0') // Enumeration not ended
+    {
+        if (!FilterValidFile(&_fileInfoHandle)) {
+            // Not for us
+            continue;
+        }
+
+        ++_fileListCountCache;
+    }
+
+    // If something went wrong, we display the error
+    if (dirReadResult != FR_OK) {
+        DisplayFResultError(_screenBuffer, dirReadResult, "Enumeration failed");
+        return false;
+    }
+
+    // Eventually we close the directory handle
+    f_closedir(&_dirHandle);
+    return true;
+}
 
 void FormatError(FRESULT result) {
     const char* message;
@@ -359,6 +398,10 @@ void DrawFileList() {
     rowPoint.x = (Int16)(rowPoint.x + rowPadding); // let's start with a little offset to not draw directly on the border
     rowPoint.y = (Int16)(_titleBoxHeight + rowPadding);
 
+    int rowsInPage = (_screenBuffer->screenSize.height - _titleBoxHeight) / rowSize;
+    int pageOffset = _fileListSelectedRow / rowsInPage;
+    int rowsToSkip = pageOffset * rowsInPage;
+
     // Little performance note: to check if the enumeration is ended, we need to check if fname is not an empty string
     // If we use strlen(), the string is read entirely each time. We can simply check if the first char is not zero
     FRESULT dirReadResult = FR_OK;
@@ -367,14 +410,15 @@ void DrawFileList() {
         ((dirReadResult = f_readdir(&_dirHandle, &_fileInfoHandle)) == FR_OK) && // No Error
         _fileInfoHandle.fname[0] != '\0') // Enumeration not ended
     {
-        if ((_fileInfoHandle.fattrib & AM_DIR) || (_fileInfoHandle.fattrib & AM_SYS) || (_fileInfoHandle.fattrib & AM_HID)) {
+        if (!FilterValidFile(&_fileInfoHandle)) {
             // Not for us
             continue;
         }
-        // We want do display only .bmp and .raw files
-        // let's ignore case sensitivity for the moment
-        if ((!EndsWith(_fileInfoHandle.fname, ".bmp")) &&
-            (!EndsWith(_fileInfoHandle.fname, ".raw"))) continue;
+
+        if (rowsToSkip-- > 0) {
+            ++fileIndex;
+            continue;
+        }
 
         // Let's draw the name a little bit shifted
         PointS nameDrawPoint = rowPoint;
@@ -412,6 +456,16 @@ void DrawFileList() {
     f_closedir(&_dirHandle);
 }
 
+static bool FilterValidFile(const FILINFO* pInfo) {
+    if ((_fileInfoHandle.fattrib & AM_DIR) || (_fileInfoHandle.fattrib & AM_SYS) || (_fileInfoHandle.fattrib & AM_HID)) {
+        // Not for us
+        return false;
+    }
+    // We want do display only .bmp and .raw files
+    // let's ignore case sensitivity for the moment
+    return EndsWith(_fileInfoHandle.fname, ".bmp") || EndsWith(_fileInfoHandle.fname, ".raw");
+}
+
 /* Public section */
 
 void ExplorerOpen(ScreenBuffer* screenBuffer) {
@@ -428,7 +482,7 @@ void ExplorerOpen(ScreenBuffer* screenBuffer) {
     if (mountResult != FR_OK) {
         DisplayFResultError(screenBuffer, mountResult, "Unable to mount SD CARD");
     }
-    else {
+    else if (CacheFileCount()) {
         DrawFileList();
     }
 }
@@ -438,15 +492,15 @@ void ExplorerProcessInput(char command) {
     if (_displayingError)
         return;
 
-    if (command == '+') {
+    if (command == '+' && (_fileListSelectedRow + 1) < _fileListCountCache) {
         ++_fileListSelectedRow;
         DrawFileList();
     }
-    else if (command == '-') {
-        _fileListSelectedRow = MAX(_fileListSelectedRow - 1, 0);
+    else if (command == '-' && _fileListSelectedRow > 0) {
+        _fileListSelectedRow = _fileListSelectedRow - 1;
         DrawFileList();
     }
-    else if (command == '\b') {
+    else if (command == 'e') {
         DrawFileList();
     }
     else if (command == 'o') {
@@ -468,4 +522,6 @@ void ExplorerClose() {
     // Super simple here: we just need to unmount the file system and then we can exit
     f_mount(NULL, FsRootDirectory, 0);
     _screenBuffer = NULL;
+    _fileListCountCache = 0;
+    _fileListSelectedRow = 0;
 }

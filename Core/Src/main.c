@@ -126,7 +126,7 @@ static UInt32 _vgaCheckLastTick = 0;
 static MainApplicationRunning _currentRunningApp = AppIdle;
 /// Home messages lines that will be displayed
 static const char* _homeMessages[] = {
-        "VGAViewer 0.22.113.1",
+        "VGAViewer 0.22.116.1",
         "a - ASCII Table",
         "e - Explorer",
         "p - Palette"
@@ -293,11 +293,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
 void DrawMainScreen() {
     DrawMainScreenBorder();
     DrawMainScreenTitle();
-
-    /*Pen pen = { 0 };
-
-    pen.color.argb = SCREEN_RGB(0, 0, 0);
-    ScreenClear(_screenBuffer, &pen);*/
 }
 
 void DrawMainScreenBorder() {
@@ -426,7 +421,7 @@ int main(void)
 
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 
-    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.113.1");
+    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.116.1");
 #ifdef _DEBUG
     printf(" - Debug Version");
 #endif
