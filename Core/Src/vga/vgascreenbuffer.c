@@ -850,7 +850,7 @@ VgaError VgaDumpTimersFrequencies() {
     }
 
     float timersOnAPB1Freq = (float)HAL_RCC_GetPCLK1Freq() * 2.0f;
-    float timersOnAPB2Freq = (float)HAL_RCC_GetPCLK2Freq() * 2.0f;
+    //float timersOnAPB2Freq = (float)HAL_RCC_GetPCLK2Freq() * 2.0f;
 
     // Let's print first the main timer frequency
 
@@ -860,13 +860,13 @@ VgaError VgaDumpTimersFrequencies() {
     printf("\r\n");
 
     TIM_TypeDef* mainTim = screenBuf->mainPixelClockTimer->Instance;
-    float mainTimerFreq = timersOnAPB2Freq / ((float)(mainTim->PSC) + 1.0f);
+    float mainTimerFreq = timersOnAPB1Freq / ((float)(mainTim->PSC) + 1.0f);
 
     printf("\tPrescaled frequency: ");
     FormatFrequency(mainTimerFreq);
     printf("\r\n");
 
-    mainTimerFreq = timersOnAPB2Freq / (((float)mainTim->ARR) + 1.0f);
+    mainTimerFreq = timersOnAPB1Freq / (((float)mainTim->ARR) + 1.0f);
     printf("\tEffetive frequency: ");
     FormatFrequency(mainTimerFreq);
     printf("\r\n");

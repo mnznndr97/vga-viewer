@@ -77,8 +77,9 @@ typedef enum _SDAppCommand {
     SdACmd41SendOpCond = 41
 } SDAppCommand;
 
-/// Completly disables the SPI interface
-
+/// Prints the SPI frequency
+static void PrintSPIFrequency();
+/// Completely disables the SPI interface
 static void ShutdownSPIInterface();
 /// Select the SPI by asserting LOW the NSS pin
 static void SelectCard();
@@ -194,6 +195,16 @@ typedef struct _ResponseR7 {
 typedef const ResponseR1* PCResponseR1;
 typedef const ResponseR3* PCResponseR3;
 typedef const ResponseR7* PCResponseR7;
+
+static void PrintSPIFrequency(){
+    float apb1Freq = (float)HAL_RCC_GetPCLK1Freq();
+    int prescaler = (READ_REG(_spiInstance->CR1) & SPI_CR1_BR_Msk) >> SPI_CR1_BR_Pos;
+    float sdiFreq = apb1Freq / (1 << (prescaler + 1));
+
+    printf("SD frequency is ");
+    FormatFrequency(sdiFreq);
+    printf("\r\n");
+}
 
 static void ShutdownSPIInterface() {
     // We need to complety disable our SPI interface
@@ -640,6 +651,7 @@ SdStatus FixWithCSDRegister() {
 
     // Max baud rate
     CLEAR_BIT(_spiHandle->Instance->CR1, SPI_CR1_BR);
+    PrintSPIFrequency();
 
     return SdStatusOk;
 }
@@ -718,6 +730,7 @@ SdStatus SdTryConnect() {
     __HAL_SPI_ENABLE(_spiHandle);
 
     printf("Providing initialization clock\r\n");
+    PrintSPIFrequency();
 
     // Then whe sent 10 dummy bytes which correspond to 80 SPI clock cycles
     BYTE dummyCrc = CRC7_ZERO;
