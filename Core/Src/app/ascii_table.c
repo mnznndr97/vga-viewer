@@ -20,9 +20,11 @@ void DrawApplicationTitle() {
     const char* title = "ASCII table";
     const int padding = 3;
 
+    // Title measurement
     SizeS titleStrBox = { 0 };
     ScreenMeasureString(title, &titleStrBox);
 
+    // Title box dimension calc
     _titleBoxHeight = titleStrBox.height + (padding * 2);
     SizeS titleBox = titleStrBox;
     titleBox.height = (Int16)_titleBoxHeight;
@@ -31,9 +33,11 @@ void DrawApplicationTitle() {
     Pen pen = { 0 };
     pen.color.argb = SCREEN_RGB(0xFF, 0x6F, 0);
 
+    // Title box filling
     PointS point = { 0 };
     ScreenFillRectangle(_pActiveBuffer, point, titleBox, &pen);
 
+    // Text drawing inside the box
     point.x = (Int16)((_pActiveBuffer->screenSize.width / 2) - (titleStrBox.width / 2));
     point.y = (Int16)padding;
 
