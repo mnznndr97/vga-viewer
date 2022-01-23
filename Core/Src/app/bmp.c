@@ -106,9 +106,9 @@ BmpResult GetPixelNN(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer, Point
     // Let's clip some possible border pixel if the image has a strange resolution
     // Negative value should not be possible but let's add the check in any case
     if (nearestX < 0) nearestX = 0;
-    if (nearestX >= cpBmp->width) nearestX = cpBmp->width - 1;
+    if (nearestX >= cpBmp->width) nearestX = (int)(cpBmp->width - 1);
     if (nearestY < 0) nearestY = 0;
-    if (nearestY >= cpBmp->height) nearestY = cpBmp->height - 1;
+    if (nearestY >= cpBmp->height) nearestY = (int)(cpBmp->height - 1);
 
     // We need to get the scanline index and seek to the pixel in the line
     int scanLineIndex = (int)cpBmp->height - nearestY;
@@ -122,7 +122,7 @@ BmpResult GetPixelNN(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer, Point
     }
 
     UINT read = 0;
-    result = f_read(cpBmp->fileHandle, color, bytesPerPixel, &read);
+    result = f_read(cpBmp->fileHandle, color, (UINT)bytesPerPixel, &read);
     if (result != FR_OK) {
         return BmpResultFailure;
     }

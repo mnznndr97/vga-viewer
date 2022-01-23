@@ -13,6 +13,7 @@
 
 /// Opens the explorer app on the specified screen
 void ExplorerOpen(ScreenBuffer *screenBuffer);
+/// Processes user command 
 void ExplorerProcessInput(char command);
 /// Closes the application
 void ExplorerClose();
