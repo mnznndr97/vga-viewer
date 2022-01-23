@@ -96,8 +96,6 @@ typedef struct _ScreenBuffer {
     BYTE packSizePower;
 } ScreenBuffer, * PScreenBuffer;
 
-extern void Error_Handler(void);
-
 /// Clears the underlying screen buffer using the color specified in the pen
 void ScreenClear(const ScreenBuffer* buffer, const Pen* pen);
 /// Fills a rectangle using the color specified in the pen

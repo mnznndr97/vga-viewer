@@ -12,16 +12,18 @@
 /// \return Modified font color
 /// \remarks The function only changes the alpha of the color to have a "better" result on our super scaled screen
 static ARGB8Color FixPixelColorWithGlyphLevel(BYTE glyphLevel, ARGB8Color fontColor) {
-    // Simple level calculation. Our glyph bitmap levels range from 0 .. 64
-    float glyphPixelLevel = (float)glyphLevel / 64.0f;
-    DebugAssert(glyphPixelLevel <= 1.0f);
-
     // To better display the glyph, I assumed that is better to directly work only on the alpha value
     // In our case, the font bitmaps are exported from Window$. Some of the pixels at the border of the glyph
     // may have a level that is near zero (but not zero). If we modify the RGB components leaving the alpha unaltered
     // for these pixels, we get on the display some black pixels. So i think that is better to only remap the alpha level using
     // the glyph level
-    fontColor.components.A = (BYTE)((float)fontColor.components.A * glyphPixelLevel);
+
+    // Simple level calculation using int math. Our glyph bitmap levels range from 0 .. 64
+    // Compiler will optimize division with the shift right
+    int newAlpha = (fontColor.components.A * glyphLevel) / 64;
+    DebugAssert(newAlpha >= 0 && newAlpha <= 255);
+
+    fontColor.components.A = (BYTE)(newAlpha);
     return fontColor;
 }
 
@@ -68,7 +70,15 @@ static void ScreenDrawCharacter(const ScreenBuffer* buffer, char character, Poin
         glyphBufferLineOffset = -glyphOriginY;
         glyphOriginY = 0;
     }
-    if (glyphOriginX < 0) {
+
+    // Glyph Y starting point is now settled
+    // Let's fix the X
+    if (glyphOriginX < 0 && (-glyphOriginX) >= charMetrics->blackBoxX) {
+        // Charater is totally outsize the screen in the X axis
+        // Nothing to do
+        return;
+    }
+    else if (glyphOriginX < 0) {
         glyphXOffset = glyphXOffset - (BYTE)glyphOriginX;
         glyphOriginX = 0;
     }
@@ -108,7 +118,7 @@ static void ScreenDrawCharacter(const ScreenBuffer* buffer, char character, Poin
             // If level is zero it is useless to draw the pixel
             if (glyphLevel != 0) {
                 glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, pen->color);
-                ScreenDrawPixel(buffer, pixelPt, & glyphPixelPen);
+                ScreenDrawPixel(buffer, pixelPt, &glyphPixelPen);
             }
         }
 
@@ -128,7 +138,7 @@ static void ScreenDrawCharacter(const ScreenBuffer* buffer, char character, Poin
                 // If level is zero it' s useless to draw the pixel
                 if (glyphLevel != 0) {
                     glyphPixelPen.color = FixPixelColorWithGlyphLevel(glyphLevel, pen->color);
-                    ScreenDrawPixel(buffer, pixelPt, & glyphPixelPen);
+                    ScreenDrawPixel(buffer, pixelPt, &glyphPixelPen);
                 }
                 // Better than using i = 0 .. 3 and multiplying by 8
                 i += 8;

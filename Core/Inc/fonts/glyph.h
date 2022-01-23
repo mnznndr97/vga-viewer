@@ -1,12 +1,9 @@
 /*
- * glyph.h
- *
- *  Created on: 25 nov 2021
- *      Author: mnznn
- * 
  * The file contains the main GlyphMetrics structure definition
+ *
+ *  Created on: Nov 25, 2021
+ *      Author: Andrea Monzani [Mat 952817]
  */
-
 #ifndef INC_FONTS_GLYPH_H_
 #define INC_FONTS_GLYPH_H_
 
