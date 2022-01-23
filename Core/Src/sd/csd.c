@@ -18,16 +18,6 @@
 /// Mask for the transfer rate time bits
 #define TRAN_SPEED_TIME_MASK (0x0f) << (TRAN_SPEED_TIME_POS)
 
-#define CCC_V1_FIXEDBITS 0xDFF
-#define CCC_V2_FIXEDBITS 0x5FD
-
-/// CSD minimal version 1.0 mask
- /// \remarks 0b01x1 1011 0101
-#define CCC_V1_FIXEDBITS_VALUE ((SDClass10 | SDClass8) | (SDClass7 | SDClass5 | SDClass4) | (SDClass2 | SDClass0))
-/// CSD minimal version 2.0 mask
-/// \remarks 0bx1x1 1011 01x1
-#define CCC_V2_FIXEDBITS_VALUE CCC_V1_FIXEDBITS_VALUE
-
 /// Offset for the read block length field
 #define READBLLEN_U8OFFSET 5
 /// Mask for the read block length exponent in the field byte
@@ -99,7 +89,7 @@ SdCsdValidation SdCsdValidate(PCCsdRegister pCSD) {
         return SdCsdValidationReservedMismatch;
 
     // As stated in CSD description [Section 5.3], the TranSpeed should always be 25 Mhz (mandatory)
-    // In high speed the max can be 50 MHz. For CSD v2, the specification allows eve higher data rates but,
+    // In high speed the max can be 50 MHz. For CSD v2, the specification allows even higher data rates but,
     // as stated in the specification, a CMD0 reset the limit to 25Mhz
     BYTE tranSpeed = GetTranSpeedByte(pRaw);
     if (tranSpeed != 0x32 && tranSpeed != 0x5A) {
@@ -123,10 +113,12 @@ UInt32 SdCsdGetMaxTransferRate(PCCsdRegister pCSD) {
     BYTE freqScaler = (BYTE)(tranSpeed & TRAN_SPEED_UNIT_MASK);
     DebugAssert(freqScaler >= 0 && freqScaler < 4); // Just asserting we are doing things right
 
+    // We set the base frequency value using the prescaler
     for (BYTE i = 0; i < freqScaler; i++) {
         baseFreq *= 10;
     }
 
+    // We then map the frequency speed
     BYTE timeValue = (BYTE)((tranSpeed & TRAN_SPEED_TIME_MASK) >> TRAN_SPEED_TIME_POS);
     DebugAssert(timeValue > 0 && timeValue < 16); // Just asserting we are doing things right. 0 is reserved
     return (UInt32)(s_tranSpeedValues[timeValue] * (float)baseFreq);

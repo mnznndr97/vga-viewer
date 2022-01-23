@@ -2,9 +2,9 @@
  * edid.h
  * 
  * This files contains the Edid sub structures and descriptors, and the declaration
- * for the parsing and reading function
+ * for the parsing and reading functions
  * 
- * Bits with different meaning the same one-byte structure are modeled with C bit field
+ * Bits with different meaning in the same one-byte structure are modeled with C bit field
  * for simplicity
  * 
  * All the functions assume that a valid edid pointer is provided
@@ -20,6 +20,7 @@
 #include <assertion.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <binary.h>
 
 /// I2C device address for the Edid structure
 /// \link https://en.wikipedia.org/wiki/Display_Data_Channel#DDC2 Source Reference \endlink
@@ -38,16 +39,23 @@ typedef enum _EdidAnalogVoltage {
 	EdidAVoltage0p7To0p0 = 3
 } EdidAnalogVoltage;
 
-typedef enum _EDIDTiming {
-	EDIDTiming720x400At70Hz = 7, EDIDTiming720x400At88Hz = 6, EDIDTiming640x480At60Hz = 5, EDIDTiming640x480At67Hz = 4, EDIDTiming640x480At72Hz = 3, EDIDTiming640x480At75Hz = 2, EDIDTiming800x600At56Hz = 1, EDIDTiming800x600At60Hz = 0,
+typedef enum _EdidTiming {
+	EdidTiming720x400At70Hz = 7, 
+    EdidTiming720x400At88Hz = 6, 
+    EdidTiming640x480At60Hz = 5, 
+    EdidTiming640x480At67Hz = 4,
+    EdidTiming640x480At72Hz = 3, 
+    EdidTiming640x480At75Hz = 2,
+    EdidTiming800x600At56Hz = 1, 
+    EdidTiming800x600At60Hz = 0,
+	EdidTiming1024x728At60Hz = 11,
+} EdidTiming;
 
-	EDIDTiming1024x728At60Hz = 11,
-} EDIDTiming;
-
+/// Digital input definition
 typedef struct _EdidDigitalInput {
 	BYTE VideoInterface :4;
 	BYTE BitDepth :3;
-	BYTE ISDigitalInput :1;
+	BYTE IsDigitalInput :1;
 } EdidDigitalInput;
 
 /// Analog input definition
@@ -81,7 +89,7 @@ typedef struct _EdidTimingInformation {
 	BYTE AspectRatio :2;
 } EdidTimingInformation;
 
-/// @brief 10-bit 2� CIE 1931 xy coordinates for red, green, blue, and white point 
+/// 10-bit 2� CIE 1931 xy coordinates for red, green, blue, and white point 
 /// \remarks Not implemented
 typedef struct _EdidChromaticityCoordinates {
 	BYTE Data[10];
@@ -97,7 +105,7 @@ typedef struct _EdidManufacturerID {
 	BYTE IdData[2];
 } EdidManufacturerID;
 
-typedef struct _EDIDHeader {
+typedef struct _EdidHeader {
 	/// Fixed header pattern: 00 FF FF FF FF FF FF 00 
 	BYTE HeaderPattern[8];
 	/// Manufacturer ID. This is a legacy Plug and Play ID
@@ -174,6 +182,7 @@ typedef struct _EdidDescriptor {
 
 } EdidDescriptor;
 
+/// Complete 128 byte EDID structure 
 typedef struct _edid {
 	EdidHeader Header;
 	EdidBasicDisplayParameters BasicDisplayParameters;
@@ -200,7 +209,7 @@ BOOL EdidIsChecksumValid(const Edid *edid);
 /// Checks if the timing is supported by the provided EDID
 /// @param edid EDID struct pointer
 /// @param timing VgaTiming
-BOOL EdidIsTimingSupported(const Edid *edid, EDIDTiming timing);
+BOOL EdidIsTimingSupported(const Edid *edid, EdidTiming timing);
 
 /// Checks if the Standard timing information is filled with data
 /// @param edidTimingInfo 

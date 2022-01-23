@@ -1,10 +1,3 @@
-/*
- * ram.c
- *
- *  Created on: Nov 4, 2021
- *      Author: mnznn
- */
-
 #include <ram.h>
 #include <stdint.h>
 

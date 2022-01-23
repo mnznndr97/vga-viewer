@@ -78,7 +78,7 @@ typedef enum _SDAppCommand {
 } SDAppCommand;
 
 /// Prints the SPI frequency
-static void PrintSPIFrequency();
+static void PrintSpiFrequency();
 /// Completely disables the SPI interface
 static void ShutdownSPIInterface();
 /// Select the SPI by asserting LOW the NSS pin
@@ -104,8 +104,8 @@ static BYTE ReadByte();
 /// \param data Data to write on the MOSI channel
 static void WriteByte(BYTE val, BYTE* crc);
 /// Base implementation of single command transaction (request send + response).
-/// \param command Commadn to send
-/// \param argument Argumento of the command
+/// \param command Command to send
+/// \param argument Argument of the command
 /// \param responseLength Length of the response to read
 /// \return Bytes received or error status (negative return). Errors can be
 ///     SdStatusCommunicationTimeout if the SD is not connected/responding
@@ -125,7 +125,7 @@ static SBYTE SendCommand(BYTE aCommand, UInt32 argument, BYTE responseLength);
 /// @return Status of the operation (bytes read if > 0, error if < 0)
 static SBYTE SendAppCommand(BYTE aCommand, UInt32 argument, BYTE responseLength);
 /// Verifies the voltage level of our connected SD card by issuing a CMD8 as specified in the Physical Layer Specification
-/// This must be done immediatly after the CMD0. If the card responds with an illegal command, the card is 1.X version, >= 2.0 otherwhise
+/// This must be done immediately after the CMD0. If the card responds with an illegal command, the card is 1.X version, >= 2.0 otherwhise
 static SdStatus CheckVddRange();
 /// Verifies the voltage level of our connected SD card by issuing a CMD58 as specified in the Physical Layer Specification
 /// @return Status of the operation
@@ -136,8 +136,11 @@ static SdStatus EnableCRC();
 /// Waits the card is ready by issuing a ACMD41 and waiting that idle state is zero
 /// @return Status of the operation
 static SdStatus SDWaitForReady();
+/// Verifies the Card Capacity Status using the CMD58 
 static SdStatus VerifyCardCapacityStatus();
+/// Checks if a byte represents a data error token
 static BOOL IsErrorToken(BYTE data);
+/// Converts an error token to a SdStatus value 
 static SdStatus ConvertErrorToken(BYTE token);
 /// Reads a data block in the specified section and checks it checksum
 /// @param destination Destination buffer
@@ -196,10 +199,10 @@ typedef const ResponseR1* PCResponseR1;
 typedef const ResponseR3* PCResponseR3;
 typedef const ResponseR7* PCResponseR7;
 
-static void PrintSPIFrequency(){
+static void PrintSpiFrequency(){
     float apb1Freq = (float)HAL_RCC_GetPCLK1Freq();
     int prescaler = (READ_REG(_spiInstance->CR1) & SPI_CR1_BR_Msk) >> SPI_CR1_BR_Pos;
-    float sdiFreq = apb1Freq / (1 << (prescaler + 1));
+    float sdiFreq = apb1Freq / (float)(1 << (prescaler + 1));
 
     printf("SD frequency is ");
     FormatFrequency(sdiFreq);
@@ -207,13 +210,13 @@ static void PrintSPIFrequency(){
 }
 
 static void ShutdownSPIInterface() {
-    // We need to complety disable our SPI interface
+    // We need to completely disable our SPI interface
     // Let's follow the procedure indicate in the SPI chapter of RM0090 [Section 28.3.8]
 
     // We should not have anything running so we simply disable the SPI and we reset the frequency at the minimum
     __HAL_SPI_DISABLE(_spiHandle);
 
-    // We reset the minimum baud rate
+    // We reset the minimum baud rate by setting the prescaler at max
     SET_BIT(_spiHandle->Instance->CR1, SPI_CR1_BR);
 
     // SD SPI frequency should be at least 100KHz
@@ -266,7 +269,6 @@ static BYTE PerformByteTransaction(BYTE data) {
 
 static BYTE ReadByte() {
     BYTE data = PerformByteTransaction(SD_DUMMY_BYTE);
-    //*crc = Crc7Add(*crc, data);
     return data;
 }
 
@@ -343,8 +345,7 @@ static SBYTE SendCommand(BYTE command, UInt32 argument, BYTE responseLength) {
 }
 
 static SBYTE SendAppCommand(BYTE aCommand, UInt32 argument, BYTE responseLength) {
-    // Let's select the SPI by asserting LOW the NSS pin
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+    SelectCard();
 
     // Before sending an app command we must send a CMD55
     SBYTE bytesRead = PerformCommandTransaction(SdCmd55AppCmd, 0x0, sizeof(ResponseR1));
@@ -358,8 +359,7 @@ static SBYTE SendAppCommand(BYTE aCommand, UInt32 argument, BYTE responseLength)
 
 cleanup:
 
-    // Let's deselect the SPI by asserting HIGH the NSS pin
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+    DeselectCard();
     return bytesRead;
 }
 
@@ -448,13 +448,12 @@ static SdStatus SDWaitForReady() {
     printf("Waiting SD to became READY (Idle = 0)\r\n");
     DebugAssert(_attachedSdCard.Version != SdVerUnknown);
     SdStatus status = SdStatusOk;
-
+    
+    // By spec, we need to continuously issue ACMD41 until ready. Initialization has its own
+    // specific timeout value that need to be used
     UInt32 hcs = _attachedSdCard.Version == SdVer2p0OrLater ? (1U << 30) : 0;
     do {
-        // We don't support SDHC or SDXC, so we keep the HCS (Host Capacity Support) bit to zero
-        // even if the SDversion is 2.0 or later
-
-        SBYTE bytesRcv = SendAppCommand(SdACmd41SendOpCond, hcs, sizeof(ResponseR1));
+         SBYTE bytesRcv = SendAppCommand(SdACmd41SendOpCond, hcs, sizeof(ResponseR1));
         if (bytesRcv < 0 && (status = (SdStatus)bytesRcv) != SdStatusIllegalCommand) {
             return (SdStatus)bytesRcv;
         }
@@ -465,6 +464,7 @@ static SdStatus SDWaitForReady() {
         }
     } while (pResponse->Idle && ((HAL_GetTick() - startTick) < SD_ACMD41_LOOP_TIMEOUT));
 
+    // If we are in idle, we consider this as a timeout
     if (pResponse->Idle) {
         return SdStatusInitializationTimeout;
     }
@@ -585,7 +585,7 @@ static SdStatus ReadRegister(SdCommand readCommand, UInt16 length) {
     DebugAssert(length <= SD_MAX_REGISTER_SIZE);
 
     // Let's select the SPI by asserting LOW the NSS pin
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+    SelectCard();
 
     SdStatus result;
     SBYTE bytesRcv = PerformCommandTransaction(readCommand, 0x0, sizeof(ResponseR1));
@@ -601,7 +601,8 @@ static SdStatus ReadRegister(SdCommand readCommand, UInt16 length) {
 
     result = ReadDataBlock(_registersBuffer, length);
 
-cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+cleanup: 
+    DeselectCard();
     return result;
 }
 
@@ -651,7 +652,7 @@ SdStatus FixWithCSDRegister() {
 
     // Max baud rate
     CLEAR_BIT(_spiHandle->Instance->CR1, SPI_CR1_BR);
-    PrintSPIFrequency();
+    PrintSpiFrequency();
 
     return SdStatusOk;
 }
@@ -730,7 +731,7 @@ SdStatus SdTryConnect() {
     __HAL_SPI_ENABLE(_spiHandle);
 
     printf("Providing initialization clock\r\n");
-    PrintSPIFrequency();
+    PrintSpiFrequency();
 
     // Then whe sent 10 dummy bytes which correspond to 80 SPI clock cycles
     BYTE dummyCrc = CRC7_ZERO;
@@ -740,7 +741,7 @@ SdStatus SdTryConnect() {
 
     printf("Sending CMD_0\r\n");
     // After the Power On cycle, we are ready to issue a CMD0 with the NSS pin asserted to LOW
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+    SelectCard();
     SBYTE responseLength = SendCommand(SdCmd0GoIdleState, 0, 1);
     if (responseLength < 0) {
         // Error for CMD0 -> We cannot go further or SPI is not supported
@@ -815,7 +816,7 @@ SdStatus SdReadSector(BYTE* destination, UInt32 sector) {
     }
 
     // Let's select the SPI by asserting LOW the NSS pin
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+    SelectCard();
 
     SdStatus result;
     SBYTE commandResult = PerformCommandTransaction(SdCmd17ReadSingleBlock, address, sizeof(ResponseR1));
@@ -830,7 +831,8 @@ SdStatus SdReadSector(BYTE* destination, UInt32 sector) {
     }
 
     result = SdStatusOk;
-cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+cleanup: 
+    DeselectCard();
     return result;
 }
 
@@ -842,8 +844,7 @@ SdStatus SdReadSectors(BYTE* destination, UInt32 sector, UInt32 count) {
         address *= blockSize;
     }
 
-    // Let's select the SPI by asserting LOW the NSS pin
-    HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_RESET);
+    SelectCard();
 
     SdStatus result;
     SBYTE commandResult = PerformCommandTransaction(SdCmd18ReadMultipleBlock, address, sizeof(ResponseR1));
@@ -877,7 +878,8 @@ SdStatus SdReadSectors(BYTE* destination, UInt32 sector, UInt32 count) {
     } while (lineBusy == 0);
 
     result = SdStatusOk;
-cleanup: HAL_GPIO_WritePin(_nssGPIO, _nssPin, GPIO_PIN_SET);
+cleanup:
+    DeselectCard();
     return result;
 }
 

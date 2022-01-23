@@ -1,8 +1,10 @@
 /*
- * ocr.h
+ * This file contains the headers of the SD specific OCR register layout
  *
- *  Created on: 18 dic 2021
- *      Author: mnznn
+ * For more information see SD Physical Layer Simplified Specification - Section 5.1 (OCR register)
+ *
+ *  Created on: Dec 18, 2021
+ *      Author: Andrea Monzani [Mat 952817]
  */
 
 #ifndef INC_SD_OCR_H_

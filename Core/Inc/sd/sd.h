@@ -20,7 +20,9 @@
 typedef enum _SdStatus {
     SdStatusOk = 0, 
     SdStatusErrorUnknown = -1,
+    /// An invalid parameter has been passed to a function
     SdStatusInvalidParameter = -2,
+    /// No valid response from SD has been received within a defined period of time
     SdStatusCommunicationTimeout = -3,
     /// An unknown device is responding over the SPI interface
     SdStatusNotSDCard = -4,

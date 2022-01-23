@@ -1,20 +1,13 @@
-/*
- * edid.c
- *
- *  Created on: 20 set 2021
- *      Author: mnznn
- */
-
 #include <vga/edid.h>
 #include <stdio.h>
+#include <stdint.h>
 
 BOOL EdidIsChecksumValid(const Edid *edid) {
 	// https://en.wikipedia.org/wiki/Extended_Display_Identification_Data#Structure,_version_1.4
 	// Sum of all 128 bytes should equal 0 (mod 256)
 
 	const BYTE *bytePtr = (const BYTE*) edid;
-	// Max sum should be 255 * 128 = 32.640, so a UInt16 should be enough
-	UInt16 sum = 0;
+	int sum = 0;
 
 	for (size_t i = 0; i < sizeof(Edid); i++) {
 		sum += bytePtr[i];
@@ -28,18 +21,18 @@ void EdidGetManufacturer(const Edid *edid, char *buffer) {
 
 	UInt16 value = *((UInt16*) &edid->Header.Manufacturer.IdData[0]);
 	// We are in a LittleEndian system, let's just swap the bytes
-	value = (value << 8) | ((value >> 8) & 0xFF);
+	value = U16ChangeEndiannes(value);
 
-	buffer[0] = ((value >> 10) & 0x1F) + '@';
-	buffer[1] = ((value >> 5) & 0x1F) + '@';
-	buffer[2] = (value & 0x1F) + '@';
+	buffer[0] = (char)(((value >> 10) & 0x1F) + '@');
+	buffer[1] = (char)(((value >> 5) & 0x1F) + '@');
+	buffer[2] = (char)((value & 0x1F) + '@');
 }
 
 Int32 EdidDtdGetHorizontalActivePixels(const EdidDetailedTimingDescriptor *detInfo) {
 	return EdidDtdMergeBits(detInfo->HActivePixelsLSBs, detInfo->HActivePixelsMSBs);
 }
 
-BOOL EdidIsTimingSupported(const Edid *edid, EDIDTiming timing) {
+BOOL EdidIsTimingSupported(const Edid *edid, EdidTiming timing) {
 	int byteIndex = timing / 8;
 	if (byteIndex < 0 || byteIndex >= 3) {
 		// Time index is out of range
@@ -47,7 +40,7 @@ BOOL EdidIsTimingSupported(const Edid *edid, EDIDTiming timing) {
 	}
 
 	int bitIndex = timing % 8;
-	BYTE bitMask = 1 << bitIndex;
+	int bitMask = 1 << bitIndex;
 	return (edid->EstablishedTimingBitmap.Data[byteIndex] & bitMask) == bitMask;
 }
 
@@ -68,7 +61,7 @@ void EdidDumpStructure(const Edid *edid) {
 	printf("\tWeek: %d\r\n", edid->Header.ManufactureWeek);
 	printf("\tYear: %d\r\n", 1990 + edid->Header.ManufactureYear);
 
-	if (edid->BasicDisplayParameters.DigitalInput.ISDigitalInput)
+	if (edid->BasicDisplayParameters.DigitalInput.IsDigitalInput)
 		printf("\tDigital input\r\n");
 	else {
 		printf("\tAnalog input\r\n");
@@ -115,25 +108,25 @@ void EdidDumpStructure(const Edid *edid) {
 	}
 
 	printf("\tBasic timings\r\n");
-	if (EdidIsTimingSupported(edid, EDIDTiming640x480At60Hz)) {
+	if (EdidIsTimingSupported(edid, EdidTiming640x480At60Hz)) {
 		printf("\t\t640x480 @ 60Hz \033[1;32msupported\033[0m\r\n");
 	} else {
 		printf("\t\t640x480 @ 60Hz \033[1;31mNOT supported\033[0m\r\n");
 	}
 
-	if (EdidIsTimingSupported(edid, EDIDTiming800x600At56Hz)) {
+	if (EdidIsTimingSupported(edid, EdidTiming800x600At56Hz)) {
 		printf("\t\t800x600 @ 56Hz \033[1;32msupported\033[0m\r\n");
 	} else {
 		printf("\t\t800x600 @ 56Hz \033[1;31mNOT supported\033[0m\r\n");
 	}
 
-	if (EdidIsTimingSupported(edid, EDIDTiming800x600At60Hz)) {
+	if (EdidIsTimingSupported(edid, EdidTiming800x600At60Hz)) {
 		printf("\t\t800x600 @ 60Hz \033[1;32msupported\033[0m\r\n");
 	} else {
 		printf("\t\t800x600 @ 60Hz \033[1;31mNOT supported\033[0m\r\n");
 	}
 
-	if (EdidIsTimingSupported(edid, EDIDTiming1024x728At60Hz)) {
+	if (EdidIsTimingSupported(edid, EdidTiming1024x728At60Hz)) {
 		printf("\t\t1024x728 @ 60Hz \033[1;32msupported\033[0m\r\n");
 	} else {
 		printf("\t\t1024x728 @ 60Hz \033[1;31mNOT supported\033[0m\r\n");
@@ -141,15 +134,15 @@ void EdidDumpStructure(const Edid *edid) {
 
 	printf("\tDescriptor 2\r\n");
 	Int32 hActivePixel = EdidDtdGetHorizontalActivePixels(&edid->Descriptor2.DetailedTiming);
-	printf("\t\tActive H: \033[1;31m%d\033[0m pixels\r\n", hActivePixel);
+	printf("\t\tActive H: \033[1;31m%" PRId32 "\033[0m pixels\r\n", hActivePixel);
 
 	printf("\tDescriptor 3\r\n");
 	hActivePixel = EdidDtdGetHorizontalActivePixels(&edid->Descriptor3.DetailedTiming);
-	printf("\t\tActive H: \033[1;31m%d\033[0m pixels\r\n", hActivePixel);
+	printf("\t\tActive H: \033[1;31m%" PRId32 "\033[0m pixels\r\n", hActivePixel);
 
 	printf("\tDescriptor 4\r\n");
 	hActivePixel = EdidDtdGetHorizontalActivePixels(&edid->Descriptor4.DetailedTiming);
-	printf("\t\tActive H: \033[1;31m%d\033[0m pixels\r\n", hActivePixel);
+	printf("\t\tActive H: \033[1;31m%" PRId32 "\033[0m pixels\r\n", hActivePixel);
 
 	if (edid->Extensions > 0) {
 		printf("\t%d extension to follow\r\n", edid->Extensions);

@@ -1,6 +1,6 @@
 /*
  * This file contains the headers of the SD specific CSD register manipulation.
- * The implementation is focused only in a base validation and read of the patrameters we need 
+ * The implementation is focused only in a base validation and read of the parameters we need 
  * in the project (TranSpeed and BlockSize). No other operation are permitted on the CSD
  * Validation Status is represented by the SdCsdValidation enumeration
  * 
