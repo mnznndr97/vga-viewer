@@ -23,8 +23,11 @@ typedef struct _VgaScreenBuffer VgaScreenBuffer;
 /// \param buffer [Out] Buffer informations
 /// \return VgaErrorNone if everything is ok
 static VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* buffer);
+/// Checks and calculates the new video timings using the timings provided in the initialization info 
+/// @param info Initialization information
+/// @param newTimings Scaled pTiming
+/// @return Status of the operation
 static VgaError CorrectVideoFrameTimings(const VgaVisualizationInfo* info, VgaVideoFrameInfo* finalTimes);
-
 /// \brief Draw a single pixel in the buffer using the speficied color in 3 bits per pixels mode
 /// \param pixelPtr Screen buffer pointer
 /// \param color Pixel color
@@ -39,18 +42,26 @@ static void DrawPixel(PointS pixel, const Pen* pen);
 /// \remarks This function allows some optimizations when drawing the same color on a large part of the screen
 /// (clearing the entire screen for example)
 static void DrawPixelPack(PointS pixel, const Pen* pen);
-
+/// Disables the DMA stream 
 static void DisableLineDMA(DMA_Stream_TypeDef* dmaStream);
 ///\brief Get the sum of all the pixels count in a VgaTiming instance
-///\return -1 if pointer is invalid, pixel sum otherwhise
+///\return Pixel count sum
 UInt32 GetTimingSum(const VgaTiming* timing);
 static void HandleHSyncInterruptFor8bpp(VgaScreenBuffer* screenBuffer, UInt32 isLineStart);
 static void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer);
+/// Validate a VgaTiming structure
+/// \param timing Valid pointer to a VgaTiming structure
+/// \return Status of the validation
 static VgaError ValidateTiming(const VgaTiming* timing);
+/// Scales the timing contained in a VgaTiming structure by a certain factor
+/// @param timing 
+/// @param scale Factor of the scaling
+/// @param dest 
 static void ScaleTiming(const VgaTiming* timing, BYTE scale, VgaTiming* dest);
 static VgaError SetupMainClockTree(float pixelMHzFreq);
+/// Setup the hsync and vsync STM timers 
 static VgaError SetupTimers(BYTE resScaling, VgaScreenBuffer* screenBuffer);
-
+/// Completly switches off the DMA for our screen buffer
 static void ShutdownDMAFor8BppBuffer(VgaScreenBuffer* screenBuffer);
 
 // ##### Private types declarations #####
@@ -263,7 +274,6 @@ void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
     /* Check for error condition */
     UInt32 lisr = bpp8State->screenLineDMAController->LISR;
 
-    // TODO Calculate this based on stream number
     UInt32 streamDirectModeErrorFlag = DMA_LISR_DMEIF0;
     UInt32 streamTransferErrorFlag = DMA_LISR_TEIF0;
 
@@ -271,7 +281,7 @@ void HandleDMALineEndFor8Bpp(VgaScreenBuffer* screenBuffer) {
         // Stream direct mode error
         Error_Handler();
     }
-    if (READ_BIT(lisr, streamTransferErrorFlag)) {
+    else if (READ_BIT(lisr, streamTransferErrorFlag)) {
         // Stream transfer mode error
         Error_Handler();
     }
@@ -362,7 +372,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     screenBufferInfos.DrawCallback = &DrawPixel;
     screenBufferInfos.DrawPackCallback = &DrawPixelPack;
 
-    // framebufferSize here contains the number of bytes requires for a single line depending of the mode
+    // framebufferSize here contains the number of bytes required for a single line depending of the mode
     // We simply now multiply the lines and double everything if double buffered
     framebufferSize = ((size_t)screenBufferInfos.screenSize.height) * framebufferSize;
 
@@ -374,7 +384,7 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     // VGA will be by default in the vSyncing section
     vgaScreenBuffer->vSyncing = true;
 
-    // We last step: we try to allocate
+    // We we try to allocate the frame buffer
     BYTE* buffer = (BYTE*)ralloc(framebufferSize);
     if (buffer == NULL) {
         // We clear the out parameter to emphasize that something has gone wrong
@@ -399,10 +409,6 @@ VgaError AllocateFrameBuffer(const VgaVisualizationInfo* info, VgaScreenBuffer* 
     return VgaErrorNone;
 }
 
-/// Checks and calculates the new video timings using the timings provided in the initialization info 
-/// @param info Initialization information
-/// @param newTimings Scaled pTiming
-/// @return Status of the operation
 VgaError CorrectVideoFrameTimings(const VgaVisualizationInfo* info, VgaVideoFrameInfo* newTimings) {
     // All basic parameters (except for timings) should have been checked here
     DebugAssert(info && newTimings);
@@ -493,7 +499,7 @@ void DrawPixel(PointS pixel, const Pen* pen) {
 
          // In this way we may help ART instruction prefetcher since most of the time we draw pixels
          // that are opaque
-         // We also avoid another call by drawifn the opaque colors directly here
+         // We also avoid another call by drawing the opaque colors directly here
         ARGB8Color color = pen->color;
         if (color.components.A == 0xFF) {
             BYTE r = color.components.R;
@@ -613,7 +619,7 @@ static VgaError SetupMainClockTree(float pixelMHzFreq) {
     DebugAssert(oscInit.PLL.PLLState == RCC_PLL_ON);
     DebugAssert(oscInit.PLL.PLLSource == RCC_PLLSOURCE_HSE);
 
-    // We set the output freq of the PLL to 120MHx = 6 * 20Mhz needed
+    // We set the output freq of the PLL to 120MHz = 6 * 20Mhz needed
     // To do this we set the PLLP to 2 (minimum) and PLLM to 4. In this way, our 8 Mhz HSE source clock
     // is bring to 120MHz
     oscInit.PLL.PLLM = 4;
@@ -638,9 +644,6 @@ static VgaError SetupMainClockTree(float pixelMHzFreq) {
     return VgaErrorNone;
 }
 
-/// @brief Validate a VgaTiming structure
-/// @param timing Valid pointer to a VgaTiming structure
-/// @return Status of the validation
 VgaError ValidateTiming(const VgaTiming* pTiming) {
     DebugAssert(pTiming);
 
@@ -951,25 +954,6 @@ VgaError VgaStartOutput() {
 
         // We always wait to reach the max level
         UInt32 fifoStatusToReach = DMA_SxFCR_FS_2 | DMA_SxFCR_FS_0; // Full;
-
-        /*UInt32 thresholdSelected = READ_BIT(bpp8State->screenLineDMAStream->FCR, DMA_SxFCR_FTH);
-        switch (thresholdSelected) {
-        case DMA_FIFO_THRESHOLD_1QUARTERFULL:
-            fifoStatusToReach = DMA_SxFCR_FS_0; // 1/4 <= Level < 1/2
-            break;
-        case DMA_FIFO_THRESHOLD_HALFFULL:
-            fifoStatusToReach = DMA_SxFCR_FS_1; // 1/2 <= Level < 3/4
-            break;
-        case DMA_FIFO_THRESHOLD_3QUARTERSFULL:
-            fifoStatusToReach = DMA_SxFCR_FS_1 | DMA_SxFCR_FS_0; // 3/4 <= Level < Full
-            break;
-        case DMA_FIFO_THRESHOLD_FULL:
-            fifoStatusToReach = DMA_SxFCR_FS_2 | DMA_SxFCR_FS_0; // Full
-            break;
-        default:
-            Error_Handler();
-            break;
-        }*/
 
         // Let's just wait the FIFO is effectively filled
         // NB: Didn't find anything in the documentation that states that this operation is necessary  but let's keep it anyway
