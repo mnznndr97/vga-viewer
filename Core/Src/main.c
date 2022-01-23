@@ -31,7 +31,6 @@
 #include <typedefs.h>
 #include <assertion.h>
 
-#include <hal_extensions.h>
 #include <cmsis_extensions.h>
 #include <crc/crc7.h>
 #include <crc/crc16.h>
@@ -60,12 +59,15 @@ typedef enum _MainApplicationRunning {
 
 /// Event flag for Edid success read from I2C channel
 #define I2CVGA_EDID_RECEIVED 0x00000001
+/// Event flag for Edid failure read from I2C channel
 #define I2CVGA_EDID_ERROR 0x00000002
 
-#define I2CVGA_CHECK_INTERVAL_MS 5000
+/// Interval that need to be elapsed between two EDID checks
+#define I2CVGA_CHECK_INTERVAL_MS 7000
 #define I2CVGA_CHECK_RETRIES 1
 #define I2CVGA_CHECK_TIMEOUT 2000
 
+/// Length of the command that need to be read via interrupt
 #define UART_USERCOMMAND_LENGTH 1
 
 /* USER CODE END PD */
@@ -126,7 +128,7 @@ static UInt32 _vgaCheckLastTick = 0;
 static MainApplicationRunning _currentRunningApp = AppIdle;
 /// Home messages lines that will be displayed
 static const char* _homeMessages[] = {
-        "VGAViewer 0.22.116.1",
+        "VGAViewer 0.22.124.1",
         "a - ASCII Table",
         "e - Explorer",
         "p - Palette"
@@ -149,12 +151,14 @@ void ConnecToVGATask(void* argument);
 void MainTask(void* argument);
 
 /* USER CODE BEGIN PFP */
+/// Prints the occured error on the spcified I2C interface
 static void HandleI2CError(I2C_HandleTypeDef* hi2c);
-
+/// Sends the received user command tu the currently active application 
 static void HandleUserInput();
+/// Starts an interrupt UART transaction to read user command
 static void IssueUserInputReadWithIT();
+/// Checks if VGA is still connected by requesting the EDID
 static bool IsVGAStillConnected();
-
 static void DrawMainScreen();
 static void DrawMainScreenBorder();
 static void DrawMainScreenTitle();
@@ -184,8 +188,9 @@ int __io_putchar(int ch) {
     return 0;
 }
 
+
 void HandleI2CError(I2C_HandleTypeDef* hi2c) {
-    // NB: HAL driver (in theory handles correctly the abort of the current transfer when an error occurs
+    // NB: HAL driver (in theory) handles correctly the abort of the current transfer when an error occurs
     // We have to do nothing
 
     printf("\033[1;33m");
@@ -336,6 +341,8 @@ void DrawMainScreenTitle() {
     int titleHeight = 0;
     const int padding = 1;
     const int messages = 4;
+
+    // Let's measure the enclosing rectangle for all the lines
     for (int i = 0; i < messages; i++)
     {
         SizeS strSize = { 0 };
@@ -345,17 +352,20 @@ void DrawMainScreenTitle() {
     }
     titleHeight -= padding;
 
+    // Let' s calculate the starting Y pos (centered on the screen)
     int startingY = (_screenBuffer->screenSize.height / 2) - (titleHeight / 2);
 
     Pen pen = { 0 };
     pen.color.argb = SCREEN_RGB(0, 0xe6, 0x76);
 
+    // We then draw each line
     PointS drawingPoint = { 0 };
     drawingPoint.y = (Int16)startingY;
     for (int i = 0; i < messages; i++)
     {
         SizeS strSize = { 0 };
 
+        // We measure the string to horizontally center it
         ScreenMeasureString(_homeMessages[i], &strSize);
         int startingX = (_screenBuffer->screenSize.width / 2) - (strSize.width / 2);
         drawingPoint.x = (Int16)startingX;
@@ -381,11 +391,11 @@ int main(void)
     Crc16Initialize();
 
     // We set to stop our main screen timer during debug
-    // In this way we avoid strange conditions
+    // In this way we avoid strange conditions and we can correclty debug DMA e timer counters
     SET_BIT(DBGMCU->APB1FZ, DBGMCU_APB1_FZ_DBG_TIM4_STOP);
     // We force the processor to raise an exception when unaligned word access occur
     // We use this combined with a compiler option to force the generation of only word acceses
-    // if  aligned to try increse the performances (unaligned word loads are slower that normal bytes load)
+    // (if aligned) to try increse the performances (unaligned word loads are slower that normal bytes load)
     SET_BIT(SCB->CCR, SCB_CCR_UNALIGN_TRP_Msk);
 
     /* USER CODE END 1 */
@@ -421,7 +431,7 @@ int main(void)
 
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET);
 
-    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.116.1");
+    printf("\033[0;0H\033[2J\033[0mStarting VGAViewer 0.22.124.1");
 #ifdef _DEBUG
     printf(" - Debug Version");
 #endif
@@ -986,7 +996,7 @@ void HandleUserInput() {
     _userCommandReceivedFlag = 0;
 
     IssueUserInputReadWithIT();
-    if (receivedCommand == '\033') { 
+    if (receivedCommand == '\033') {
         // Escape command, we close the application
         if (_currentRunningApp == AppAsciiTable) {
             AsciiTableClose();
@@ -1001,6 +1011,7 @@ void HandleUserInput() {
         DrawMainScreen();
     }
     else if (_currentRunningApp != AppIdle) {
+        // We send the command to the running app
         switch (_currentRunningApp) {
         case AppAsciiTable:
             AsciiTableProcessInput(receivedCommand);
@@ -1016,6 +1027,7 @@ void HandleUserInput() {
         }
     }
     else {
+        // We open the specific application
         switch (receivedCommand) {
         case 'a':
             _currentRunningApp = AppAsciiTable;
@@ -1091,7 +1103,7 @@ void ConnecToVGATask(void* argument)
         __HAL_I2C_DISABLE(&hi2c2);
         if (waitbeforeNextConnection) {
             waitbeforeNextConnection = false;
-            osExDelayMs(10 * 1000); // 10 sec delay
+            CHECK_OS_STATUS(osExDelayMs(10 * 1000)); // 10 sec delay
         }
 
         // We have to clear the Error code since in the I2C_Master_Receive the field is cleared AFTER the BUSY_FLAG wait loop,
@@ -1116,6 +1128,7 @@ void ConnecToVGATask(void* argument)
             Error_Handler();
         }
 
+        // We need to wait an answer from I2C communication
         UInt32 result = osEventFlagsWait(_vgaEDIDRcvEvntHandle, I2CVGA_EDID_ERROR | I2CVGA_EDID_RECEIVED, osFlagsWaitAny, osWaitForever);
         if (osExResultIsFlagsErrorCode(result)) {
             Error_Handler();
@@ -1148,6 +1161,7 @@ void ConnecToVGATask(void* argument)
         _visualizationInfos.vSyncTimer = &htim3;
         _visualizationInfos.lineDMA = &hdma_tim1_trig;
 
+        // We create the screen buffer
         VgaError vgaResult = VgaCreateScreenBuffer(&_visualizationInfos, &_screenBuffer);
         if (vgaResult != VgaErrorNone) {
             Error_Handler();
@@ -1157,8 +1171,8 @@ void ConnecToVGATask(void* argument)
         // We are connected. We resume the low priority check connection task and we suspend ourself
         CHECK_OS_STATUS(osThreadResume(_mainTaskHandle));
 
+        // Before suspending, we start the drawing and we start reading user commands
         DrawMainScreen();
-
         vgaResult = VgaStartOutput();
         if (vgaResult != VgaErrorNone) {
             Error_Handler();
