@@ -1,8 +1,8 @@
 /*
- * intmath.h
+ * Contains defintions for standard mathematic functions and macro
  *
  *  Created on: 22 nov 2021
- *      Author: mnznn
+ *      Author: Andrea Monzani [Mat 952817]
  */
 
 #ifndef INC_INTMATH_H_

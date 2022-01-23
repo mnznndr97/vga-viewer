@@ -1,21 +1,15 @@
-/*
- * assertion.c
- *
- *  Created on: Oct 23, 2021
- *      Author: mnznn
- */
-
 #include <assertion.h>
 #include <assert.h>
 #include <stm32f407xx.h>
 
+// Error_Handler is defined in the main.c module
 extern void Error_Handler(void);
 
 void DebugAssert(bool condition) {
 #ifdef CUSTOMASSERT
-        if(!condition) Error_Handler();
+    if (!condition) Error_Handler();
 #else
-	assert(condition);
+    assert(condition);
 #endif
 }
 

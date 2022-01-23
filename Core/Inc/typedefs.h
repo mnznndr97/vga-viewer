@@ -1,8 +1,9 @@
 /*
- * typedefs.h
- *
- *  Created on: 9 set 2021
- *      Author: mnznn
+ * Contains the typedefs for the common integer types (signed and unsigned)
+ * and some useful macro for VisualStudio intellisense
+ * 
+ *  Created on: Sep 9, 2021
+ *      Author: Andrea Monzani [Mat 952817]
  */
 
 #include <stdint.h>

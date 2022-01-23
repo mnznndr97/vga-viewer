@@ -15,29 +15,39 @@ typedef struct tagBITMAPFILEHEADER {
     DWORD bfOffBits;
 } __attribute__((aligned(2), packed)) BITMAPFILEHEADER, * PBITMAPFILEHEADER;
 
+/// Contains information about the dimensions and color format of a device-independent bitmap (DIB).
 typedef struct tagBITMAPINFOHEADER {
     DWORD biSize;
     LONG  biWidth;
+    /// Specifies the height of the bitmap, in pixels.
+    /// For uncompressed RGB bitmaps, if biHeight is positive, the bitmap is a bottom-up DIB 
+    /// with the origin at the lower left corner. If biHeight is negative, the bitmap is a 
+    /// top-down DIB with the origin at the upper left corner
     LONG  biHeight;
     WORD  biPlanes;
+    /// Specifies the number of bits per pixel (bpp). For uncompressed formats, 
+    /// this value is the average number of bits per pixel.
     WORD  biBitCount;
     DWORD biCompression;
     DWORD biSizeImage;
     LONG  biXPelsPerMeter;
     LONG  biYPelsPerMeter;
+    /// Specifies the number of color indices in the color table that are actually used by the bitmap
     DWORD biClrUsed;
     DWORD biClrImportant;
 } BITMAPINFOHEADER, * PBITMAPINFOHEADER;
 
+/// Offset of the DIB interface from the start of the file
 #define DIB_OFFSET 14
 #define BI_RGB 0L
 
 /// Validates the bitmap identifier in the Bmp description
 static BmpResult ValidateIdentifier(const Bmp* pBmp);
-
 /// Reads the image data offset from the BMP file in the Bmp description
 /// @return Status of the operation
 static BmpResult ReadBufferOffset(Bmp* pBmp);
+/// Reads the bitmap informations using the windows bitmap headers
+static BmpResult ReadWindowsBitmapInfoHeader(Bmp* pBmp);
 /// Display a bitmap on the screen that have the exact resolution of the destination frame buffer
 static BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer);
 /// Display a bitmap on the screen applying a resize algorithm
@@ -55,7 +65,7 @@ BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer
 
     PointS point = { 0 };
     // From our beloved MSDN https://docs.microsoft.com/en-us/windows/win32/gdi/about-bitmaps
-    // The bitmap scanline are stored in reverse order
+    // The bitmap scanline are stored in reverse order in our case
     UInt32 currentRowPos = f_tell(cpBmp->fileHandle);
     for (int row = cpScreenBuffer->screenSize.height - 1; row >= 0; row--) {
         point.y = (Int16)row;
@@ -72,9 +82,7 @@ BmpResult FastDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer
 
             // We directly read the 3 components (that are stored in "little-endian")
             // directly into the pen color
-            // Alpha component should remain untouched since we are reading only
-            //  3 bytes
-
+            // Alpha component should remain untouched since we are reading only 3 bytes
             result = f_read(cpBmp->fileHandle, &pen.color.argb, 3, &read);
             if (result != FR_OK) {
                 return BmpResultFailure;
@@ -95,12 +103,18 @@ BmpResult GetPixelNN(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer, Point
     int nearestX = (int)((float)pixelPt.x * invScaleX);
     int nearestY = (int)((float)pixelPt.y * invScaleY);
 
-    // Let's ignore some possible border pixel if the image has a strange resolution
-    if (nearestX < 0 || nearestX >= cpBmp->width) return BmpResultOk;
-    if (nearestY < 0 || nearestY >= cpBmp->height) return BmpResultOk;
+    // Let's clip some possible border pixel if the image has a strange resolution
+    // Negative value should not be possible but let's add the check in any case
+    if (nearestX < 0) nearestX = 0;
+    if (nearestX >= cpBmp->width) nearestX = cpBmp->width - 1;
+    if (nearestY < 0) nearestY = 0;
+    if (nearestY >= cpBmp->height) nearestY = cpBmp->height - 1;
 
+    // We need to get the scanline index and seek to the pixel in the line
     int scanLineIndex = (int)cpBmp->height - nearestY;
-    size_t pixelOffset = (size_t)((scanLineIndex * (int)cpBmp->rowByteSize) + (nearestX * 3));
+    // Assuming a bitcount multiple of a byte
+    int bytesPerPixel = cpBmp->bitCount >> 3; // let's shift instead of divide the number
+    size_t pixelOffset = (size_t)((scanLineIndex * (int)cpBmp->rowByteSize) + (nearestX * bytesPerPixel));
     // We seek to the data section of the BMP
     FRESULT result = f_lseek(cpBmp->fileHandle, cpBmp->dataOffset + pixelOffset);
     if (result != FR_OK) {
@@ -108,7 +122,7 @@ BmpResult GetPixelNN(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer, Point
     }
 
     UINT read = 0;
-    result = f_read(cpBmp->fileHandle, color, 3, &read);
+    result = f_read(cpBmp->fileHandle, color, bytesPerPixel, &read);
     if (result != FR_OK) {
         return BmpResultFailure;
     }
@@ -125,7 +139,7 @@ BmpResult SlowDisplayBitmap(const Bmp* cpBmp, const ScreenBuffer* cpScreenBuffer
     pen.color.components.A = 0xFF;
 
     DebugWriteChar('n');
-    // Scanlines are stored in reverse order in out Bmp
+    // Scanlines are stored in reverse order in our Bmp
     for (int y = cpScreenBuffer->screenSize.height - 1; y >= 0; y--)
     {
         pixelPt.y = (Int16)y;
@@ -185,9 +199,6 @@ BmpResult ReadWindowsBitmapInfoHeader(Bmp* pBmp) {
     if (result != FR_OK) {
         return BmpResultFailure;
     }
-    if (result != FR_OK) {
-        return BmpResultFailure;
-    }
     result = f_read(pBmp->fileHandle, &pBmp->height, sizeof(DWORD), &read);
     if (result != FR_OK) {
         return BmpResultFailure;
@@ -210,6 +221,7 @@ BmpResult ReadWindowsBitmapInfoHeader(Bmp* pBmp) {
         return BmpResultFailure;
     }
 
+    // Bitmap MUST not contain any color indices
     DWORD clrUsed;
     result = f_lseek(pBmp->fileHandle, DIB_OFFSET + offsetof(BITMAPINFOHEADER, biClrUsed));
     if (result != FR_OK) {
@@ -228,6 +240,7 @@ BmpResult ReadWindowsBitmapInfoHeader(Bmp* pBmp) {
 }
 
 BmpResult ValidateIdentifier(const Bmp* pBmp) {
+    // We support only windows bitmaps
     if (pBmp->identifier != BmpIdentifierBM)
         return BmpResultFailure;
     return BmpResultOk;

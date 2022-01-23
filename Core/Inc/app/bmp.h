@@ -1,11 +1,14 @@
 /*
  * Header for the BMP image manipulation.
- * The unit only handle the loading of a basic BMP file that is saved without any compression
+ * The unit only handles the loading of a basic BMP file that is saved without any compression
  * in the current Windows format
- * The BMo file can also be displayed on the screen via the BmpDisplay() function
+ * The BMP file can also be displayed on the screen via the BmpDisplay() function
  *
  * The windows BMP specification can be found at https://docs.microsoft.com/en-us/windows/win32/gdi/about-bitmaps
  *
+ * The API does NOT define a BmpXXXClose() method since no memory is allocated for the public 
+ * Bmp struct
+ * 
  *  Created on: Dic 30, 2021
  *      Author: Andrea Monzani [Mat 952817]
  */
