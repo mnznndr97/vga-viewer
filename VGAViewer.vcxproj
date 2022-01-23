@@ -82,7 +82,6 @@
     <ClCompile Include="Core\Src\fonts\glyph.c" />
     <ClCompile Include="Core\Src\fonts\hp_simplified.c" />
     <ClCompile Include="Core\Src\freertos.c" />
-    <ClCompile Include="Core\Src\hal_extensions.c" />
     <ClCompile Include="Core\Src\io\sd_driver.c" />
     <ClCompile Include="core\src\main.c" />
     <ClCompile Include="Core\Src\ram.c" />

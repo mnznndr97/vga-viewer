@@ -13,7 +13,6 @@
 #define INC_SD_SD_H_
 
 #include "stm32f4xx_hal.h"
-#include <hal_extensions.h>
 #include <typedefs.h>
 #include <sd/csd.h>
 

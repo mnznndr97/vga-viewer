@@ -15,14 +15,16 @@ void Crc7Initialize() {
 
     // Let's pre-generate the 256 bytes -> CRC map
     for (int i = 0; i < 256; ++i) {
+        // We need to immediatly check if the exiting bit (bit 7) is 1
         CRCTable[i] = (uint8_t)((i & 0x80) ? i ^ Poly : i);
 
-        // Data polynomial, per SD standard, must be multiplied by x ^ 7
-        // So we just apply the CRC xor shift algorithm 7 times
+        // We then loop over the remaining bits as ion the classic CRC
         for (int j = 1; j < 8; ++j) {
             CRCTable[i] = (uint8_t)MASKI2BYTE(CRCTable[i] << 1);
+
+            // Same here. if exiting bit is 1, we xor with the Poly
             if ((CRCTable[i] & 0x80) != 0)
-                CRCTable[i] = (uint8_t)(CRCTable[i] ^ Poly);
+                CRCTable[i] = (uint8_t)MASKI2BYTE(CRCTable[i] ^ Poly);
         }
 
         // CRC7 MSB should always be 0 per algorithm
@@ -38,11 +40,11 @@ uint8_t Crc7Add(uint8_t crc, uint8_t data) {
 #if _DEBUG
     DebugAssert(_initialized != 0);
 #endif
-    // To accumulate the CRC, we shift it (MSB should be 0 so we don't need to perform XOR with the Poly)
+    // To accumulate the CRC, we shift it (MSB should be 0 so we don't need to perform XOR with the Poly) to the 8 bits size
     // since new data is entering in the cycle and we compute the XOR with the data value
 
     // We should then perform the * x^7 polynomial multiplication, which eventually result in a simple dereference of our pre-calculated
-    // CRC value at the newly calculated value
+    // CRC at the newly calculated value
     uint8_t index = (uint8_t)((crc << 1) ^ data);
     return CRCTable[index];
 }

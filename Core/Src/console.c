@@ -1,16 +1,8 @@
-/*
- * console.c
- *
- *  Created on: Nov 12, 2021
- *      Author: mnznn
- */
-
 #include <console.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <inttypes.h>
-#include <cmsis_extensions.h>
 
 void FormatTime(float seconds) {
 	// Assuming that a negative time value is not "correct, so we don't format it
@@ -40,17 +32,11 @@ void FormatFrequency(float hertz) {
 	}
 
 	static const char *suffix[] = { "Hz", "KHz", "MHz", "GHz" };
-	const int suffixLength = 3; // We should never get to ns
+	const int suffixLength = 3; // We should never get to Ghz
 
-	float lastValidHertz = hertz;
-	int i = 0;
-	do {
-		hertz /= 1000.0f;
-		if (i < suffixLength - 1 && hertz > 1.0f) {
-			lastValidHertz = hertz;
-			++i;
-		} else
-			break;
-	} while (true);
-	printf("%.2f %s", lastValidHertz, suffix[i]);
+    int i;
+    for (i = 0; i < suffixLength - 1 && hertz > 1000.0f; i++) {
+        hertz /= 1000.0f;
+    }
+	printf("%.2f %s", hertz, suffix[i]);
 }
