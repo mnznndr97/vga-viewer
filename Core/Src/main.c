@@ -1146,6 +1146,7 @@ void ConnecToVGATask(void* argument)
 
         if (!EdidIsChecksumValid(&_vgaEDID)) {
             printf("\033[1;33mVGA Edid checksum is not valid. Cannot connect\033[0m\r\n");
+            waitbeforeNextConnection = true;
             continue;
         }
 
